@@ -1,5 +1,7 @@
 # 3d-print-doctor
 
+[![tests](https://github.com/chiemekae/3d-print-doctor/actions/workflows/tests.yml/badge.svg)](https://github.com/chiemekae/3d-print-doctor/actions/workflows/tests.yml)
+
 An agent skill that turns Claude Code (or another agent that reads `SKILL.md` skills) into a print technician for a **Bambu Lab printer + OrcaSlicer on macOS**. It diagnoses failed prints from evidence, tunes print and filament settings one change at a time, watches running prints through the printer's camera, and keeps a print log so the second time a problem shows up it takes minutes, not an evening.
 
 ## What it does
@@ -86,6 +88,8 @@ macOS's Local Network privacy blocks programs like Homebrew's Python and ffmpeg 
 ```
 
 The tests use synthetic printer states and sliced files; no printer needed.
+
+CI runs these tests on macOS for every pull request, and `main` only accepts changes through pull requests whose tests pass.
 
 ## Credits
 
