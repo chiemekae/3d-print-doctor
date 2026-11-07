@@ -7,10 +7,10 @@ jobs:
   test:
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Apple's Python (what users actually run)
         run: /usr/bin/python3 -m unittest discover -s tests -v
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.x"
       - name: Latest Python
