@@ -19,9 +19,22 @@ When you learn a lasting fact about the user's setup (a firmware mode, a preset 
 
 These hold on every branch.
 
-- **Physical actions need a fresh go-ahead.** Starting, pausing, resuming, or stopping a print moves real hardware that may have a hand, a part, or the wrong plate in it. Before each one, confirm with the user: bed clear, correct plate, filament loaded (and where: AMS slot or external spool), and the options (bed leveling, flow calibration, timelapse). Before starting a print, also name the process and filament presets in the sliced file and flag any that aren't the ones the user normally uses (`notes` says how they name their own; a stock preset carried over from a project is the usual slip), and go through any pre-print step or question `notes` records, such as an exhaust fan they switch on by hand or the state of the desiccant the spool was stored with. Run `platemap.py` on the sliced file before every start, and raise any `warning:` line it prints, such as a support material flushed into the infill of parts made of another material, or a bed heated for the hottest filament rather than the parts' material. Then ask whether they want the map image to check where the parts, supports, and purge block will print; if they do, send it and wait for them to OK the layout. `bbl.py` refuses these commands without `--yes`; pass it only after that confirmation. `bbl.py print` also checks each filament the plate uses against the AMS slot (or external spool) it maps to, and refuses a type mismatch, a color that's loaded in a different slot, or a busy printer. Fix `--ams` or have the user load the right spool; pass `--force-mapping` only when the user confirms the mismatch is intended.
+- **Physical actions need a fresh go-ahead.** Starting, pausing, resuming, or stopping a print moves real hardware that may have a hand, a part, or the wrong plate in it. Before starting, work through [Before starting a print](#before-starting-a-print). Before pausing, resuming, or stopping, confirm with the user what you're about to do and why; before resuming, also that nothing was left in the printer. `bbl.py` refuses these commands without `--yes`; pass it only after that confirmation.
 - **Originals stay untouched.** Edit a copy of any project (`<name> - <change>.3mf` next to the original). Before editing an OrcaSlicer preset, copy it to `<data_dir>/preset-backups/<date>/`. When the user asks for an original project to be replaced (usually once a fixed copy has printed well), copy the original to `<data_dir>/project-backups/<date>/` first, and tell them where it went. Details in [references/orcaslicer.md](references/orcaslicer.md).
 - **The printer access code stays secret.** `bbl.py` reads it from OrcaSlicer's config and masks it in all output. When you run a LAN tool by hand, mask its output the same way.
+
+## Before starting a print
+
+Go through these in order, every time, then ask for the go-ahead once, covering all of them.
+
+1. **Presets.** Name the process and filament presets in the sliced file, and flag any that aren't the ones the user normally uses. `notes` says how they name their own; a stock preset carried over from a project is the usual slip.
+2. **Plate check.** Run `platemap.py` on the sliced file and raise any `warning:` line it prints, such as a support material flushed into the infill of parts made of another material, or a bed heated for the hottest filament rather than the parts' material.
+3. **Plate map.** Ask whether they want the map image to check where the parts, supports, and purge block will print. If they do, send it and wait for them to OK the layout.
+4. **Filament.** Say which spool each filament prints from (AMS slot or external spool), and go through any filament question `notes` records, such as the state of the desiccant or hygrometer where the spool was stored.
+5. **Printer.** Bed clear, the plate type the file was sliced for, and any other pre-print step `notes` records, such as an exhaust fan they switch on by hand.
+6. **Options.** Bed leveling, flow calibration, timelapse.
+7. **Start.** After the go-ahead, run `bbl.py print --yes` with `--ams` for the mapping you named. It checks each filament against the spool it maps to, and refuses a type mismatch, a color that's loaded in a different slot, or a busy printer. Fix `--ams` or have the user load the right spool; pass `--force-mapping` only when the user confirms the mismatch is intended.
+8. **Watch.** Offer to watch the print (see Quick jobs).
 
 ## Tools
 
@@ -46,14 +59,14 @@ Work through the steps in order. Each step ends on a criterion you can check.
 2. **Diagnose.** Match symptoms against [references/failure-modes.md](references/failure-modes.md) and list your suspects. Rank them by evidence for and against, and note the cheap check that would confirm or rule out each one. For a suspect setting, the cheapest check is often to slice with and without it and compare the G-code (see "Testing a setting" in orcaslicer.md): if nothing changes, the setting isn't the cause for this job, whatever its name suggests. *Done when* every suspect has its check, and the checks you can run yourself (settings, status, camera) have been run.
 3. **Agree on the fix.** Propose a **single-variable change** for the top suspect, plus the smallest test print that would show it working: a cut-down section of the part, or an OrcaSlicer calibration print (temperature tower, flow rate, pressure advance, retraction, max volumetric speed). Wait for the user's choice. *Done when* the user approves a specific change and test.
 4. **Apply.** Change a project copy or a backed-up preset, slice it, and confirm the change appears in the G-code header with the value you intended. *Done when* the header shows the new value and nothing else changed.
-5. **Test.** Send the test print, following the ground rules. Watch it (see Quick jobs) and `snap` at the layer where the failure appeared before. Compare against the original failure. *Done when* the failure is gone in the test, or it isn't and you return to step 2 with the next suspect, carrying what this test ruled out.
+5. **Test.** Send the test print, going through [Before starting a print](#before-starting-a-print). Watch it (see Quick jobs) and `snap` at the layer where the failure appeared before. Compare against the original failure. *Done when* the failure is gone in the test, or it isn't and you return to step 2 with the next suspect, carrying what this test ruled out.
 
    **Stop after three test prints** on the same failure without a clear improvement. Tell the user what's stuck and why: the suspects tested and ruled out, what the evidence still points at, and whether two requirements are fighting each other (strength vs. print time, a fit vs. the material's shrinkage). Then let them decide the next move. A clear "stuck because X" beats a fourth guess.
 6. **Record.** Log the original failure and every test print with `printlog.py add --from <sliced file> --result … --issue <tag> --fix "<the change that worked>"`, using the tags from failure-modes.md. *Done when* `printlog.py find --model <part>` shows the entries, with the fix on the one that worked.
 
 ## Quick jobs
 
-For a quick status check, a picture, or sending a ready print, use the matching `bbl.py` command and show the user the result (attach the image if your harness can send files). The diagnosis loop is for failures and tuning.
+For a quick status check or a picture, use the matching `bbl.py` command and show the user the result (attach the image if your harness can send files). Sending a ready print still goes through [Before starting a print](#before-starting-a-print). The diagnosis loop is for failures and tuning.
 
 **Keeping an eye on a print** ("watch it", "tell me if it fails"): run `bbl.py watch` in the background.
 - If your harness wakes you when a background command exits, add `--exit-on-alert`. When it exits, read its output, tell the user, and start it again while the print is still running. Codes already active at a restart are listed, not re-alerted.
