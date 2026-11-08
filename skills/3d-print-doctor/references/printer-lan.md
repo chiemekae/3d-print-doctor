@@ -78,6 +78,7 @@ These are what `bbl.py` publishes to `device/<serial>/request`, for when you nee
   - With the AMS, `ams_mapping` lists the tray number (0–15) for each filament in project order. Tray number = AMS unit × 4 + slot, counting from 0, so the 4th slot of the first AMS is tray 3.
   - Don't count on the printer to catch a wrong mapping. `bbl.py print` compares the filaments in `slice_info.config` with the status report's trays first.
 - **Change the running job:** `{"print": {"command": "pause" | "resume" | "stop"}}`
+- **Run calibrations (`calibrate`):** `{"print": {"command": "calibration", "option": <bits>}}`, adding 1 for lidar, 2 for bed leveling, and 4 for vibration compensation (from Bambu Studio's `command_start_calibration`). The printer acks with `"command": "calibration", "result": "success"`, then reports `RUNNING` with the stage of each step (3 for vibration) and `FINISH` when done. Vibration alone took about 4 minutes on an X1C. Bambu Studio sends this on X1 firmware with AP version 00.00.15.79 or later; the other bits are untested here.
 - **Full status push:** `{"pushing": {"command": "pushall"}}`
 
 ## Camera support by model

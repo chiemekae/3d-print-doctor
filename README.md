@@ -8,7 +8,7 @@ An agent skill that turns Claude Code (or another agent that reads `SKILL.md` sk
 
 - **Diagnoses failures** with a fixed loop: collect evidence (photos, camera, printer status, the exact settings that ran, your print history) → rank suspects → agree on one change and a small test print → apply → test → record. It stops after three failed tests and explains what's stuck instead of guessing.
 - **Tells you which photos to take** with your phone: a short shot list when a print finishes (before and after you take it off the plate) and for each kind of failure, with tips on lighting and framing so defects actually show up.
-- **Talks to the printer over the LAN**: status with HMS and error codes explained, camera snapshots and video clips, a self-made timelapse, files on the SD card, and (with your go-ahead each time) start, pause, resume, and stop.
+- **Talks to the printer over the LAN**: status with HMS and error codes explained, camera snapshots and video clips, a self-made timelapse, files on the SD card, and, with your go-ahead each time, starting, pausing, resuming, and stopping prints and running calibrations such as vibration compensation.
 - **Shows the plate before printing**: a top-down map of the sliced plate, colored by filament, with the purge block outlined (OrcaSlicer's thumbnails leave it out), so you can check the layout before the job starts.
 - **Watches a print in the background** and alerts on pauses, new error codes, stalls, over-temperature, and the end of the job, with a camera snapshot for each event.
 - **Edits OrcaSlicer presets and projects safely**: originals untouched, presets backed up first, every change verified in the sliced G-code.
@@ -19,7 +19,7 @@ An agent skill that turns Claude Code (or another agent that reads `SKILL.md` sk
 - **macOS**, with Apple's Command Line Tools (`/usr/bin/python3`, 3.9+). The scripts use only the standard library.
 - **OrcaSlicer** (tested with 2.5.0 and 2.4.2), with the printer bound in its Device tab (LAN, access code).
 - **ffmpeg** for the camera: `brew install ffmpeg`, and "LAN liveview" turned on in the printer's settings.
-- **Starting, pausing, or stopping prints** from the agent needs the printer to accept third-party commands: on current Bambu firmware that means **LAN Only Mode + Developer Mode**. Status, camera, SD card, and the watch work without it.
+- **Starting, pausing, or stopping prints, or running calibrations,** from the agent needs the printer to accept third-party commands: on current Bambu firmware that means **LAN Only Mode + Developer Mode**. Status, camera, SD card, and the watch work without it.
 
 ### Printer compatibility
 
@@ -73,7 +73,7 @@ Setup finds your printer in OrcaSlicer, checks for ffmpeg, says whether your mod
 
 ## Safety
 
-- The agent asks before **every** physical action (start, pause, resume, stop), checking the bed is clear and the right filament is loaded. The script refuses these commands without an explicit `--yes`.
+- The agent asks before **every** physical action (start, pause, resume, stop, calibrate), checking the bed is clear and the right filament is loaded. The script refuses these commands without an explicit `--yes`.
 - Before starting, it checks that each filament in the sliced file maps to an AMS slot (or the external spool) holding that material, and refuses a mismatch, such as PLA mapped to a PETG slot.
 - The printer's access code is read from OrcaSlicer's config and masked in all output. Nothing goes to the cloud: every connection is to the printer on your LAN.
 - Original projects are never modified, and presets are backed up before any edit.
