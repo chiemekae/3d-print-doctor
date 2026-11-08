@@ -1,3 +1,6 @@
 __pycache__/
 *.pyc
 .DS_Store
+
+# skill-creator eval runs (local results, not committed)
+skills/3d-print-doctor-workspace/

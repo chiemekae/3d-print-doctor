@@ -1,0 +1,7 @@
+schema_version: "1.1"
+name: answers-settings-from-log
+expected_outcome: |
+  Answers from the print log rather than general advice: checks it for PETG (printlog.py settings or
+  find, or the log file), gives the nozzle and bed temperatures from the entries it found, and separates prints whose
+  result is "success" from backfilled entries whose result is "unknown", since only the former show
+  what worked.

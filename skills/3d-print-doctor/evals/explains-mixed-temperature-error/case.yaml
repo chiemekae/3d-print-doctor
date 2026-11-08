@@ -1,0 +1,13 @@
+schema_version: "1.1"
+name: explains-mixed-temperature-error
+expected_outcome: |
+  Reads the project's settings instead of guessing. Explains that the part prints in PLA while the
+  supports and support interface print in PETG (filament 2), and that PETG's 255 °C print temperature
+  is above PLA's 190-240 °C range, which is what OrcaSlicer's restriction checks. Offers both ways
+  forward: keep the PETG supports (a deliberate trick for clean removal) by allowing mixed temperatures
+  (the "Remove mixed temperature restriction" preference, or --allow-mix-temp on the command line), or
+  print the supports in PLA with a top Z gap. Doesn't recommend moving the temperatures into each
+  other's range, which silences the check by printing one material outside its usual range. Doesn't
+  modify the project.
+context:
+  scaffold_script: place-files.sh
