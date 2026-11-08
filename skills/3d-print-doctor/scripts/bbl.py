@@ -23,6 +23,8 @@ Settings (data folder, temperature ratings) come from ~/.config/3d-print-doctor/
                                              filament's type doesn't match its AMS slot or spool (or the
                                              printer is busy); --force-mapping overrides the type check
   bbl.py pause|resume|stop --yes             change the running job
+  bbl.py calibrate --yes [--vibration] [--bed-level] [--lidar]
+                                             run printer calibrations on an idle printer (at least one)
 
 Global: --serial SERIAL picks a printer when OrcaSlicer knows several.
 
@@ -637,6 +639,41 @@ def cmd_job(pr, a):
     s = summarize(msgs, pr); print(json.dumps({k: s[k] for k in ("gcode_state", "job", "percent", "stage", "hms")}))
 
 
+# Bit positions of the "calibration" command's option field, from Bambu Studio's
+# MachineObject::command_start_calibration. Vibration was tested on an X1C; the others are untested.
+CALIBRATIONS = {"lidar": 0, "bed_level": 1, "vibration": 2}
+
+
+def calibration_request(names):
+    """The MQTT payload that starts the named calibrations."""
+    return {"print": {"sequence_id": "22", "command": "calibration",
+                      "option": sum(1 << CALIBRATIONS[n] for n in names)}}
+
+
+def calibration_reply(msgs):
+    """The printer's answer to a calibration command: "success", another result string, or None if none came."""
+    for x in msgs:
+        p = x.get("print") or {}
+        if p.get("command") == "calibration" and "result" in p: return str(p["result"]).lower()
+    return None
+
+
+def cmd_calibrate(pr, a):
+    names = [n for n in CALIBRATIONS if getattr(a, n)]
+    if not names: die("say which calibration to run: --vibration, --bed-level, --lidar")
+    need_yes(a, "start a calibration")
+    m = Mqtt(pr); status = summarize(m.pushall(), pr); m.close()
+    if status.get("gcode_state") is None: die("no status from the printer; not starting")
+    if status.get("gcode_state") in ACTIVE:
+        die(f"the printer is busy ({status.get('gcode_state')}: {status.get('job')}); not starting a calibration")
+    m = Mqtt(pr); m.publish(calibration_request(names)); msgs = m.pushall(wait=8); m.close()
+    reply = calibration_reply(msgs)
+    if reply not in ("success", None): die(f"the printer refused the calibration (result: {reply})")
+    s = summarize(msgs, pr)
+    print(json.dumps({"calibration": names, "accepted": reply == "success",
+                      **{k: s.get(k) for k in ("gcode_state", "stage", "hms")}}))
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--serial")
@@ -678,6 +715,12 @@ def main():
     s.set_defaults(fn=cmd_print)
     for c in ("pause", "resume", "stop"):
         s = sp.add_parser(c); s.add_argument("--yes", action="store_true"); s.set_defaults(fn=cmd_job)
+    s = sp.add_parser("calibrate", help="run calibrations on an idle printer (needs --yes)")
+    s.add_argument("--yes", action="store_true")
+    s.add_argument("--vibration", action="store_true", help="vibration compensation (input shaping)")
+    s.add_argument("--bed-level", dest="bed_level", action="store_true", help="auto bed leveling")
+    s.add_argument("--lidar", action="store_true", help="lidar calibration (X1 series)")
+    s.set_defaults(fn=cmd_calibrate)
     sp.add_parser("setup").set_defaults(fn=cmd_setup)
     a = ap.parse_args()
     if a.cmd == "setup": return cmd_setup(a)
