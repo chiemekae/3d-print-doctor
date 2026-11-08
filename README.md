@@ -74,6 +74,7 @@ Setup finds your printer in OrcaSlicer, checks for ffmpeg, says whether your mod
 ## Safety
 
 - The agent asks before **every** physical action (start, pause, resume, stop), checking the bed is clear and the right filament is loaded. The script refuses these commands without an explicit `--yes`.
+- Before starting, it checks that each filament in the sliced file maps to an AMS slot (or the external spool) holding that material, and refuses a mismatch, such as PLA mapped to a PETG slot.
 - The printer's access code is read from OrcaSlicer's config and masked in all output. Nothing goes to the cloud: every connection is to the printer on your LAN.
 - Original projects are never modified, and presets are backed up before any edit.
 
