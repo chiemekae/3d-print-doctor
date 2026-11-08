@@ -19,7 +19,9 @@ Settings (data folder, temperature ratings) come from ~/.config/3d-print-doctor/
   bbl.py clip OUT.mp4 [--seconds N]          short camera video (default 10 s)
   bbl.py frames DIR --every S --count N [--assemble OUT.mp4]   self-made timelapse of a live print
   bbl.py print FILE.gcode.3mf --yes [--plate 1] [--no-level] [--no-flow] [--timelapse] [--vibration] [--ams 0,1]
-                                             upload + start (default: external spool)
+                                             upload + start (default: external spool). Refuses when a
+                                             filament's type doesn't match its AMS slot or spool (or the
+                                             printer is busy); --force-mapping overrides the type check
   bbl.py pause|resume|stop --yes             change the running job
 
 Global: --serial SERIAL picks a printer when OrcaSlicer knows several.
@@ -519,17 +521,97 @@ def need_yes(a, what):
     if not a.yes: die(f"refusing to {what} without --yes (get the user's go-ahead first)")
 
 
+def sliced_filaments(z, plate=1):
+    """[(filament number, type, #RRGGBB)] for the filaments a plate uses, from slice_info.config;
+    every project filament from project_settings.config when slice_info has none."""
+    out = []
+    try:
+        info = z.read("Metadata/slice_info.config").decode(errors="replace")
+        plates = re.split(r"<plate>", info)[1:]
+        for block in plates:
+            if re.search(r'key="index" value="(\d+)"', block) and \
+               int(re.search(r'key="index" value="(\d+)"', block).group(1)) != plate: continue
+            for m in re.finditer(r"<filament ([^>]*)/>", block):
+                attrs = dict(re.findall(r'(\w+)="([^"]*)"', m.group(1)))
+                out.append((int(attrs.get("id", 0)), attrs.get("type", ""), attrs.get("color", "")))
+    except KeyError:
+        pass
+    if not out:
+        try:
+            s = json.loads(z.read("Metadata/project_settings.config"))
+            types, colors = s.get("filament_type") or [], s.get("filament_colour") or []
+            out = [(i + 1, ty, colors[i] if i < len(colors) else "") for i, ty in enumerate(types)]
+        except (KeyError, ValueError):
+            pass
+    return out
+
+
+def check_mapping(filaments, status, ams):
+    """Compare each filament the plate uses with the spool it would print from.
+    Returns (errors, lines): errors block the start; lines describe the mapping either way."""
+    norm_type = lambda s: (s or "").strip().upper()
+    norm_color = lambda s: (s or "").strip().lstrip("#").upper()[:6]
+    errors, lines, trays = [], [], {}
+    if ams is None:
+        if len(filaments) > 1:
+            errors.append(f"the plate uses {len(filaments)} filaments, but the external spool feeds one; pass --ams")
+        sources = {n: ("the external spool", status.get("external_spool") or {}) for n, _, _ in filaments[:1]}
+    else:
+        trays = {int(t["ams"]) * 4 + int(t["slot"]): t for t in status.get("ams_trays") or []
+                 if str(t.get("ams", "")).isdigit() and str(t.get("slot", "")).isdigit()}
+        sources = {}
+        for n, _, _ in filaments:
+            if n - 1 >= len(ams) or ams[n - 1] < 0:
+                errors.append(f"filament {n}: no AMS tray given (--ams lists one tray per filament, in order)")
+                continue
+            tray = ams[n - 1]
+            t = trays.get(tray) or {}
+            sources[n] = (f"AMS {tray // 4 + 1} slot {tray % 4 + 1} (tray {tray})",
+                          {"tray_type": t.get("type"), "tray_color": t.get("color")})
+    for n, kind, color in filaments:
+        if n not in sources: continue
+        where, spool = sources[n]
+        have_type, have_color = norm_type(spool.get("tray_type")), norm_color(spool.get("tray_color"))
+        lines.append(f"filament {n}: {kind} #{norm_color(color)} -> {where}: "
+                     f"{have_type or 'empty'}{' #' + have_color if have_color else ''}")
+        if not have_type:
+            errors.append(f"filament {n} ({kind}): {where} is empty or unknown to the printer")
+        elif have_type != norm_type(kind):
+            errors.append(f"filament {n} is {kind}, but {where} holds {have_type}")
+        elif color and have_color and norm_color(color) != have_color:
+            better = [f"AMS {i // 4 + 1} slot {i % 4 + 1} (tray {i})" for i, tr in sorted(trays.items())
+                      if norm_type(tr.get("type")) == have_type and norm_color(tr.get("color")) == norm_color(color)] \
+                if ams is not None else []
+            if better:
+                errors.append(f"filament {n} is #{norm_color(color)} {kind}, which is loaded in {', '.join(better)}, "
+                              f"but it maps to {where} (#{have_color})")
+            else:
+                lines.append(f"  note: color differs (sliced #{norm_color(color)}, loaded #{have_color}); fine if intended")
+    return errors, lines
+
+
 def cmd_print(pr, a):
     need_yes(a, "start a print")
     with zipfile.ZipFile(a.file) as z:
         gpath = f"Metadata/plate_{a.plate}.gcode"
         if gpath not in z.namelist(): die(f"{a.file} has no {gpath}; export it with OrcaSlicer --export-3mf after slicing")
         md5 = hashlib.md5(z.read(gpath)).hexdigest().upper()
+        filaments = sliced_filaments(z, a.plate)
+    ams = [int(x) for x in a.ams.split(",")] if a.ams else None
+    m = Mqtt(pr); status = summarize(m.pushall(), pr); m.close()
+    if status.get("gcode_state") is None: die("no status from the printer; not starting")
+    if status.get("gcode_state") in ACTIVE:
+        die(f"the printer is busy ({status.get('gcode_state')}: {status.get('job')}); not starting another job")
+    errors, lines = check_mapping(filaments, status, ams)
+    print("\n".join(lines), file=sys.stderr)
+    if errors and not a.force_mapping:
+        die("filament mapping doesn't match what's loaded:\n  " + "\n  ".join(errors) +
+            "\nfix --ams (or load the right spool); --force-mapping starts anyway")
     name = os.path.basename(a.file).replace(" ", "_")
     curl(pr, name, "-T", a.file)
     listing = curl(pr, "/", "-l").decode(errors="replace").split()
     if name not in listing: die(f"upload of {name} not visible on SD card")
-    ams = [int(x) for x in a.ams.split(",")] if a.ams else [0]
+    ams = ams or [0]
     req = {"print": {"sequence_id": "20", "command": "project_file", "param": gpath, "project_id": "0", "profile_id": "0",
                      "task_id": "0", "subtask_id": "0", "subtask_name": a.name or os.path.splitext(os.path.basename(a.file))[0],
                      "url": f"file:///sdcard/{name}", "md5": md5, "timelapse": a.timelapse, "bed_type": "auto",
@@ -574,6 +656,8 @@ def main():
     s.add_argument("--no-flow", action="store_true"); s.add_argument("--timelapse", action="store_true")
     s.add_argument("--vibration", action="store_true", help="run vibration compensation before printing")
     s.add_argument("--ams", help="comma-separated AMS tray per filament (0-15); omit for the external spool")
+    s.add_argument("--force-mapping", action="store_true",
+                   help="start even when a filament's type doesn't match the spool it maps to")
     s.set_defaults(fn=cmd_print)
     for c in ("pause", "resume", "stop"):
         s = sp.add_parser(c); s.add_argument("--yes", action="store_true"); s.set_defaults(fn=cmd_job)

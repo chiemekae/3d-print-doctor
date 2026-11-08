@@ -75,7 +75,8 @@ These are what `bbl.py` publishes to `device/<serial>/request`, for when you nee
 
 - **Start a job (`print`):** `{"print": {"command": "project_file", "param": "Metadata/plate_<n>.gcode", "url": "file:///sdcard/<file>.gcode.3mf", "md5": "<md5 of that plate's gcode>", "bed_leveling": true, "flow_cali": true, "timelapse": false, "use_ams": false, "ams_mapping": [0], ...}}`
   - Use `"use_ams": false` for the external spool.
-  - With the AMS, `ams_mapping` lists the tray (0–15) for each filament in project order.
+  - With the AMS, `ams_mapping` lists the tray (0–15) for each filament in project order. Tray = AMS unit × 4 + slot, counting from 0, so the 4th slot of the first AMS is tray 3.
+  - Don't count on the printer to catch a wrong mapping. `bbl.py print` compares the filaments in `slice_info.config` with the status report's trays first.
 - **Change the running job:** `{"print": {"command": "pause" | "resume" | "stop"}}`
 - **Full status push:** `{"pushing": {"command": "pushall"}}`
 
