@@ -106,11 +106,15 @@ class Mqtt:
         body = _str("MQTT") + bytes([4, 0xC2]) + struct.pack("!H", 60) + _str("3d-print-doctor") + _str("bblp") + _str(pr.code)
         self._w(_pkt(0x10, body))
         t0 = time.time()
+        # A LAN connect is answered in about 0.2 s (X1C over Wi-Fi); 10 s is headroom for a slow network,
+        # and a refused login still fails at once because the CONNACK arrives with a nonzero code.
         while self.connack is None and time.time() - t0 < 10: time.sleep(0.05)
         if self.connack != 0:
             self.p.terminate()
             raise PrinterError(f"MQTT connect failed (connack={self.connack}); is the printer on and the access code current?")
         self._w(_pkt(0x82, struct.pack("!H", 1) + _str(f"device/{pr.serial}/report") + b"\x00"))
+        # SUBACK isn't parsed, so give the subscription time to take effect: without this pause, about 1 in 5
+        # requests sent right away got no reply (X1C); with it, none of 10 were missed.
         time.sleep(0.4)
 
     def _w(self, b):
@@ -147,6 +151,7 @@ class Mqtt:
         self._w(_pkt(0x30, _str(f"device/{self.pr.serial}/request") + json.dumps(obj).encode()))
 
     def pushall(self, wait=5):
+        # An idle X1C answers with a full status about 0.5 s after the request; 5 s covers a busy printer.
         self.publish({"pushing": {"sequence_id": "1", "command": "pushall"}})
         time.sleep(wait)
         with self.lock: return list(self.msgs)
@@ -251,6 +256,8 @@ class Relay:
     def __init__(self, pr):
         self.pr = pr
         remote_len = len(f"rtsps://{pr.ip}:322")
+        # Any free port works; these sit near RTSP's usual 8554. Five-digit ports first, then four: the
+        # padded loopback host (_local_host) makes up the rest of the length, within its 9..15 characters.
         for port in list(range(18554, 18600)) + list(range(8554, 8600)):
             host_len = remote_len - len(f"rtsp://:{port}")
             if 9 <= host_len <= 15:
@@ -422,7 +429,7 @@ class Watch:
                 if s["gcode_state"] in ACTIVE:
                     watching = True; self.start(s, now)
                 elif now < deadline:
-                    time.sleep(30); continue
+                    time.sleep(30); continue   # preparation takes minutes; two checks a minute is enough
                 else:
                     print(json.dumps({"kind": "idle", "message": f"no print running (printer is {s['gcode_state']})"}), flush=True)
                     return 0
@@ -562,7 +569,7 @@ def check_mapping(filaments, status, ams):
         sources = {}
         for n, _, _ in filaments:
             if n - 1 >= len(ams) or ams[n - 1] < 0:
-                errors.append(f"filament {n}: no AMS tray given (--ams lists one tray per filament, in order)")
+                errors.append(f"filament {n}: no tray number given (--ams lists one per filament, in order)")
                 continue
             tray = ams[n - 1]
             t = trays.get(tray) or {}
@@ -617,12 +624,15 @@ def cmd_print(pr, a):
                      "url": f"file:///sdcard/{name}", "md5": md5, "timelapse": a.timelapse, "bed_type": "auto",
                      "bed_levelling": not a.no_level, "bed_leveling": not a.no_level, "flow_cali": not a.no_flow,
                      "vibration_cali": a.vibration, "layer_inspect": False, "use_ams": bool(a.ams), "ams_mapping": ams}}
+    # The wait only decides how fresh the summary printed below is; the start doesn't depend on it.
+    # 15 s gives the printer time to pick up the job, so the summary usually shows it starting.
     m = Mqtt(pr); m.publish(req); msgs = m.pushall(wait=15); m.close()
     print(json.dumps(summarize(msgs, pr), indent=1))
 
 
 def cmd_job(pr, a):
     need_yes(a, a.cmd)
+    # As in cmd_print, the wait only decides how fresh the reported state is; 6 s usually shows the change.
     m = Mqtt(pr); m.publish({"print": {"sequence_id": "21", "command": a.cmd}}); msgs = m.pushall(wait=6); m.close()
     s = summarize(msgs, pr); print(json.dumps({k: s[k] for k in ("gcode_state", "job", "percent", "stage", "hms")}))
 
@@ -633,13 +643,19 @@ def main():
     sp = ap.add_subparsers(dest="cmd", required=True)
     s = sp.add_parser("status"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_status)
     s = sp.add_parser("watch", help="watch a print and report events (read-only)")
+    # Each check opens a new TLS session. Every 5 min is plenty for multi-hour prints and the 20-min stall alert;
+    # under 60 s would mostly add load on the printer.
     s.add_argument("--interval", type=int, default=300, help="seconds between checks (default 300, min 60)")
     s.add_argument("--exit-on-alert", action="store_true", help="exit (code 3) after the first warning or critical event")
     s.add_argument("--wait-start", type=int, default=0, metavar="MIN", help="wait up to MIN minutes for a print to start")
     s.add_argument("--progress-every", type=int, default=30, metavar="MIN", help="progress event interval (default 30)")
+    # One layer of a full plate can take well over 10 min, during which neither the layer nor the time left
+    # may change; 20 min avoids false alarms there. Calibration stages are excluded separately (Watch.check).
     s.add_argument("--stall-min", type=int, default=20, help="minutes without progress before a stall alert (default 20)")
     s.add_argument("--max-nozzle", type=int, default=config()["max_nozzle_c"], help="nozzle rating in °C (config max_nozzle_c)")
     s.add_argument("--max-bed", type=int, default=config()["max_bed_c"], help="bed rating in °C (config max_bed_c)")
+    # 10 failed checks at the default interval is about 50 min without contact: enough to ride out a Wi-Fi
+    # drop or a printer restart, short enough that a dead watch doesn't linger all night.
     s.add_argument("--max-failures", type=int, default=10, help="failed checks in a row before giving up (default 10)")
     s.add_argument("--no-snap", action="store_true", help="skip the camera snapshot on each event")
     s.add_argument("--dir", help="where events.jsonl and snapshots go (default <data_dir>/watch/<date>_<job>/)")
@@ -655,7 +671,8 @@ def main():
     s.add_argument("--plate", type=int, default=1); s.add_argument("--name"); s.add_argument("--no-level", action="store_true")
     s.add_argument("--no-flow", action="store_true"); s.add_argument("--timelapse", action="store_true")
     s.add_argument("--vibration", action="store_true", help="run vibration compensation before printing")
-    s.add_argument("--ams", help="comma-separated AMS tray per filament (0-15); omit for the external spool")
+    s.add_argument("--ams", help="comma-separated tray number per filament, in order: AMS unit x 4 + slot, counting from 0 "
+                   "(the 4th slot of the first AMS is 3); omit for the external spool")
     s.add_argument("--force-mapping", action="store_true",
                    help="start even when a filament's type doesn't match the spool it maps to")
     s.set_defaults(fn=cmd_print)

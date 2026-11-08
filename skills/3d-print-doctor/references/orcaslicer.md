@@ -4,12 +4,18 @@
 
 - **User presets:** `~/Library/Application Support/OrcaSlicer/user/default/{process,filament,machine}/<name>.json`, each with a `<name>.info` beside it.
   - The JSON holds only the user's overrides plus `"inherits": "<parent>"`.
-  - To find a setting's effective value, walk the inherits chain into the system profiles.
+  - To find a setting's effective value, read it from a sliced G-code header (every setting appears as `; key = value`) or from a project's `project_settings.config`. The inherits chain ends in system presets you can't read (below).
   - The user's own presets are the default choice for their printing. If they follow a naming habit, it's in the config's `notes`; if not, list this folder and ask which presets they use, then record the answer there.
-- **System presets:** read-only, and they inherit from each other. Up to OrcaSlicer 2.4 they were plain JSON in `/Applications/OrcaSlicer.app/Contents/Resources/profiles/BBL/{process,filament,machine}/`. From 2.5 they ship packed in `profiles/BBL.opc` (copied to `~/Library/Application Support/OrcaSlicer/system/`), a binary format that can't be grepped. On 2.5, get a setting's effective value from a sliced G-code header, which lists every setting, or from a project's `project_settings.config`, rather than walking the inherits chain.
+- **System presets:** read-only, and they inherit from each other. They ship packed in `/Applications/OrcaSlicer.app/Contents/Resources/profiles/BBL.opc` (copied to `~/Library/Application Support/OrcaSlicer/system/`), a binary format that can't be read or grepped.
 - **App state:** `OrcaSlicer.conf` (JSON plus an `# MD5` trailer). It holds the currently selected presets and the printer binding.
 
-A setting's key name is whatever appears in these JSON files. Grep a system profile to confirm a key exists before you write it into a preset. Many filament keys are arrays, with one value per extruder or filament.
+A setting's key name is whatever appears in a sliced G-code header or `project_settings.config`. Confirm a key exists there before you write it into a preset or project. Many filament keys are arrays, with one value per extruder or filament.
+
+<details>
+<summary>Older versions: OrcaSlicer 2.4 and earlier</summary>
+
+System presets were plain JSON in `/Applications/OrcaSlicer.app/Contents/Resources/profiles/BBL/{process,filament,machine}/`, so you could walk a user preset's `inherits` chain through them and grep them for key names. The G-code header method above works on these versions too.
+</details>
 
 ## Editing a preset
 
@@ -37,7 +43,7 @@ To edit a project, unzip a copy, change only the needed members, and re-zip in t
 A project 3MF from MakerWorld or another person carries its author's settings, and they win when it's sliced: their process and filament values, sometimes another printer or nozzle, and possibly their own start G-code. When a downloaded project fails, compare it with the user's setup before diagnosing anything else:
 - **Presets:** `printer_settings_id`, `print_settings_id`, and `filament_settings_id` against the user's presets and the filament actually loaded.
 - **Author's changes:** `different_settings_to_system` lists every key the author changed from the system presets. Each one is a suspect.
-- **Start G-code:** `machine_start_gcode` and `filament_start_gcode` against the system profile for this printer (walk the `inherits` chain). Start G-code written for another printer or firmware can skip calibration or move the toolhead somewhere unexpected.
+- **Start G-code:** `machine_start_gcode` and `filament_start_gcode` against the stock ones for this printer: slice any project of the user's own with their usual printer preset and compare the two G-code headers. Start G-code written for another printer or firmware can skip calibration or move the toolhead somewhere unexpected.
 
 The usual fix is to keep the author's geometry and plate layout but re-select the user's own printer, filament, and process presets after opening the project, then slice again.
 
@@ -66,7 +72,7 @@ No difference means the setting is irrelevant to this job, however plausible it 
 ## Gotchas found so far
 
 - **100% infill:** set `sparse_infill_pattern` to `zig-zag`, which OrcaSlicer reports as rectilinear. Grid and crosshatch don't support 100%.
-- **Build volume:** read `printable_height` and `printable_area` from the project's `project_settings.config` (or the machine preset's inherits chain); OrcaSlicer's height can be a little under the spec sheet (250 mm on the X1 series, against 256 mm advertised). A part's orientation decides whether it fits and how its features print. Tall, thin TPU parts wobble, so prefer laying them flat.
+- **Build volume:** read `printable_height` and `printable_area` from the project's `project_settings.config` or a sliced G-code header; OrcaSlicer's height can be a little under the spec sheet (250 mm on the X1 series, against 256 mm advertised). A part's orientation decides whether it fits and how its features print. Tall, thin TPU parts wobble, so prefer laying them flat.
 - **TPU with an AMS:** regular TPU feeds from the external spool (`tray_now` 254); OrcaSlicer blocks filament type `TPU` in the AMS. The exception is Bambu's "TPU for AMS" (type `TPU-AMS`), which is allowed in AMS slots. Generic TPU's flow limit is around 3.2 mm³/s, so solid TPU parts take a long time. Estimate with the command-line slice before committing.
 - **Mixed materials and flushing:** with "Flush into objects' infill" (`flush_into_infill`) on, purge from each filament change goes into the parts' sparse infill instead of the purge block. That's fine for color changes in one material. When a second material only prints supports or interfaces (PETG supports on PLA, the usual trick for clean support removal), it puts that material inside the parts, where it won't bond. Turn the setting off in the project copy; `platemap.py` warns about this case. "Flush into support" (`flush_into_support`) matters less, since supports get removed anyway.
 - **Mixed materials heat the bed for the hottest one:** with `bed_temperature_formula` = `by_highest_temp` (the default), PLA parts with PETG supports get PETG's bed temperature (70 °C on textured PEI), and their bottoms soften. Fix it in the project copy: set the plate temperature (`textured_plate_temp` and `textured_plate_temp_initial_layer`, or the key for the plate in use) to one value both materials accept, such as 60 °C, or set the formula to `by_first_filament`. `platemap.py` warns when the bed runs well above the parts' own temperature.
