@@ -29,14 +29,14 @@ These hold on every branch.
 - **OrcaSlicer CLI** slices projects and reports time and weight. Read [references/orcaslicer.md](references/orcaslicer.md) before reading or editing presets, project 3MFs, or slicing.
 - **[`scripts/printlog.py`](scripts/printlog.py)**: the print log at `<data_dir>/print-log.jsonl`, one entry per print, successes included. `add --from <sliced file>` fills presets, material, temperatures, and settings from the file, so entries record what actually ran rather than what anyone remembers. `settings` shows what successful prints used, marking values that were the same every time. Entries with result `unknown` were backfilled from the SD card (source `sd:/…`, dated by upload); when the user mentions how one of those prints went, `amend` its result. Run with `/usr/bin/python3 -I <skill>/scripts/printlog.py --help`.
 - **Sliced files on the SD card**: the card's root keeps every job sent to the printer as `<job>.gcode.3mf` (`bbl.py ls /`). That is the exact file that ran, even for jobs sent from the OrcaSlicer app; `bbl.py get` it for its settings or to log it. To backfill an empty log, `get` each one and `printlog.py add --from <it> --result unknown --date <upload date> --source sd:/<name>`.
-- **Photos from the user** land in `photo_inbox` when the config sets one; otherwise ask them to attach or point to the image.
+- **Photos from the user** land in `photo_inbox` when the config sets one; otherwise ask them to attach or point to the image. Ask for specific shots, not "a picture": [references/photos.md](references/photos.md) has what to ask for when a print finishes, after removal, and for each kind of failure, plus how to light and frame them.
 
 ## The diagnosis loop
 
 Work through the steps in order. Each step ends on a criterion you can check.
 
 1. **Collect evidence.**
-   - Look at the failure itself: the user's photos, `bbl.py snap`, a `clip` if the problem is motion (ringing, nozzle catching, layer shift), the job's timelapse from `/timelapse/` on the SD card, or the events and snapshots in `<data_dir>/watch/` if a watch ran.
+   - Look at the failure itself: the user's photos (ask for the shots photos.md lists for this failure), `bbl.py snap`, a `clip` if the problem is motion (ringing, nozzle catching, layer shift), the job's timelapse from `/timelapse/` on the SD card, or the events and snapshots in `<data_dir>/watch/` if a watch ran.
    - Pull `bbl.py status` for the job, layer, temperatures, fans, and HMS codes.
    - Pull the exact settings used: the job's `.gcode.3mf` from the SD card, or the project's `Metadata/project_settings.config`. If the project came from MakerWorld or another person, check what it carries over from its author (see "Downloaded projects" in orcaslicer.md).
    - Check the log: `printlog.py find --model <part>`, `find --material <type>`, and `settings --material <type>`. If it holds a fix that worked for this material and preset, that fix is your first suggestion, and you say so. If the log is silent, say that too.
@@ -60,6 +60,6 @@ For a quick status check, a picture, or sending a ready print, use the matching 
 - On a `warning` or `critical` event, look at the event's snapshot, tell the user what you see, and suggest an action. Pausing or stopping still needs their go-ahead. Use a push notification if your harness has one, since the user may be away from the chat.
 - Event types, files, and exit codes are in `bbl.py --help`.
 
-**Logging a finished print**: when a print ends (a watch's `finished`, `failed`, or `stopped` event, or the user mentions one), offer to log it in one line: "Log it? Worked, or what went wrong?" Then find the job's file with `bbl.py ls /` (usually `<job>.gcode.3mf`; `bbl.py print` uploads replace spaces with underscores), `bbl.py get` it, and run `printlog.py add --from <it> --watch <watch folder> --result …` with whatever they said. A sparse entry beats none, so log what they volunteer without asking for more fields.
+**Logging a finished print**: when a print ends (a watch's `finished`, `failed`, or `stopped` event, or the user mentions one), offer to log it in one line: "Log it? Worked, or what went wrong?" On a finished print, ask in the same message for the on-plate shots in photos.md before they remove the part, and the after-removal shots once it's off; judge the result from them and say what you see. Then find the job's file with `bbl.py ls /` (usually `<job>.gcode.3mf`; `bbl.py print` uploads replace spaces with underscores), `bbl.py get` it, and run `printlog.py add --from <it> --watch <watch folder> --result …` with whatever they said. A sparse entry beats none, so log what they volunteer without asking for more fields.
 
 **Settings questions** ("what temperature for this PETG?", "what worked last time?"): run `printlog.py settings` and `find` first, and answer from the log before general advice.

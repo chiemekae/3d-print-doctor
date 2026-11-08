@@ -7,6 +7,7 @@ An agent skill that turns Claude Code (or another agent that reads `SKILL.md` sk
 ## What it does
 
 - **Diagnoses failures** with a fixed loop: collect evidence (photos, camera, printer status, the exact settings that ran, your print history) → rank suspects → agree on one change and a small test print → apply → test → record. It stops after three failed tests and explains what's stuck instead of guessing.
+- **Tells you which photos to take** with your phone: a short shot list when a print finishes (before and after you take it off the plate) and for each kind of failure, with tips on lighting and framing so defects actually show up.
 - **Talks to the printer over the LAN**: status with HMS and error codes explained, camera snapshots and video clips, a self-made timelapse, files on the SD card, and (with your go-ahead each time) start, pause, resume, and stop.
 - **Watches a print in the background** and alerts on pauses, new error codes, stalls, over-temperature, and the end of the job, with a camera snapshot for each event.
 - **Edits OrcaSlicer presets and projects safely**: originals untouched, presets backed up first, every change verified in the sliced G-code.
