@@ -19,6 +19,7 @@ macOS Quick Look (`qlmanage`); --svg writes only the SVG to OUT. Standard librar
 import argparse, math, os, re, shutil, subprocess, sys, tempfile, zipfile
 
 SCALE, PAD, GRID = 3, 40, 50          # px per mm, margin px, grid spacing mm
+CELL = 0.5                            # mm per map cell: about one extrusion width, so single lines still show
 BED, GRID_LINE, EDGE = "#9aa0a6", "#8a9096", "#4a4f55"   # mid-grey bed: white and black filament both show
 TOWER = ("prime tower", "wipe tower")
 SKIP = ("custom",)                    # filament-change and start/end G-code, not the plate
@@ -126,6 +127,21 @@ def bed_warning(lines, part_filaments, types):
             f"Lower {key} for the other filaments in a project copy, or set the formula to by_first_filament.")
 
 
+def raster(segs, bw, bh):
+    """Top-down occupancy grid: cell -> filament number + 1 of the last extrusion over it (later layers on top).
+    Drawing cells instead of every line keeps the SVG small however much infill a plate has; one line per
+    segment made a 4-hour plate too big for Quick Look to render."""
+    nx, ny = int(bw / CELL) + 1, int(bh / CELL) + 1
+    grid = [bytearray(nx) for _ in range(ny)]
+    step = CELL / 2                     # sample twice per cell so no cell along a line is skipped
+    for t, _, x0, y0, x1, y1 in segs:
+        n = max(1, int(math.hypot(x1 - x0, y1 - y0) / step))
+        for k in range(n + 1):
+            ix, iy = int((x0 + (x1 - x0) * k / n) / CELL), int((y0 + (y1 - y0) * k / n) / CELL)
+            if 0 <= ix < nx and 0 <= iy < ny: grid[iy][ix] = t + 1
+    return grid
+
+
 def where(cx, cy, w, h):
     col = ("left", "center", "right")[min(2, int(3 * cx / w))]
     row = ("front", "middle", "back")[min(2, int(3 * cy / h))]
@@ -155,8 +171,14 @@ def render(lines, title):
     for g in range(GRID, int(bh), GRID):
         o.append(f'<line x1="{X(0)}" y1="{Y(g)}" x2="{X(bw)}" y2="{Y(g)}" stroke="{GRID_LINE}"/>')
     color = lambda t: colors[t] if t < len(colors) and re.match(r"#[0-9A-Fa-f]{6}", colors[t]) else "#d00"
-    for t, f, a, b, c, d in segs:
-        o.append(f'<line x1="{X(a):.1f}" y1="{Y(b):.1f}" x2="{X(c):.1f}" y2="{Y(d):.1f}" stroke="{color(t)[:7]}" stroke-width="1.2" stroke-linecap="round"/>')
+    for iy, row in enumerate(raster(segs, bw, bh)):     # one rect per run of same-filament cells in a row
+        ix = 0
+        while ix < len(row):
+            v = row[ix]; start = ix
+            while ix < len(row) and row[ix] == v: ix += 1
+            if v:
+                o.append(f'<rect x="{X(start * CELL):.1f}" y="{Y((iy + 1) * CELL):.1f}" width="{(ix - start) * CELL * SCALE:.1f}" '
+                         f'height="{CELL * SCALE:.1f}" fill="{color(v - 1)[:7]}"/>')
     summary, warnings = [], []
     tw = [s for s in segs if s[1].lower() in TOWER]
     part_types = {types[t] for t in used if t < len(types) and "parts" in roles(segs, t)}
@@ -206,6 +228,7 @@ def main():
     ap.add_argument("--svg", action="store_true", help="write only the SVG to OUT")
     a = ap.parse_args()
     svg, summary = render(read_gcode(a.file, a.plate), os.path.basename(a.file))
+    print("\n".join(summary), flush=True)     # before the image, so the checks are there even if rendering fails
     if a.svg:
         open(a.out, "w").write(svg)
     else:
@@ -214,13 +237,15 @@ def main():
         src = os.path.join(tmp, "plate.svg")
         open(src, "w").write(svg)
         # 1000 px keeps the legend readable on a phone; Quick Look renders in a second or two, 60 s is a hang guard.
-        subprocess.run(["qlmanage", "-t", "-s", "1000", "-o", tmp, src], capture_output=True, timeout=60)
+        try:
+            subprocess.run(["qlmanage", "-t", "-s", "1000", "-o", tmp, src], capture_output=True, timeout=60)
+        except subprocess.TimeoutExpired:
+            sys.exit(f"Quick Look took over 60 s to render the map; the SVG is at {src} (open it in a browser), or use --svg")
         png = src + ".png"
-        if not os.path.exists(png): sys.exit("Quick Look did not render the SVG; use --svg")
+        if not os.path.exists(png): sys.exit(f"Quick Look did not render the map; the SVG is at {src}, or use --svg")
         shutil.move(png, a.out)
         shutil.copy(src, os.path.splitext(a.out)[0] + ".svg")
         shutil.rmtree(tmp, ignore_errors=True)
-    print("\n".join(summary))
     print(f"wrote {a.out}")
 
 
