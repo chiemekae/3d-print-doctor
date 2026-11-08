@@ -84,6 +84,15 @@ class PlateMapTest(unittest.TestCase):
         _, summary = platemap.render(lines, "x")
         self.assertFalse([s for s in summary if s.startswith("warning")], summary)
 
+    def test_bed_hotter_than_the_parts_material(self):
+        bed = ["; curr_bed_type = Textured PEI Plate", "; textured_plate_temp = 55,70",
+               "; textured_plate_temp_initial_layer = 55,70", "; bed_temperature_formula = by_highest_temp"]
+        hot = platemap.bed_warning(bed + ["M190 S70"] + GCODE.splitlines(), {0}, ["PLA", "PETG"])
+        self.assertIn("bed runs at 70 °C, but the PLA parts' own Textured PEI Plate temperature is 55 °C", hot)
+        self.assertIsNone(platemap.bed_warning(bed + ["M190 S55"] + GCODE.splitlines(), {0}, ["PLA", "PETG"]))
+        self.assertIsNone(platemap.bed_warning(bed + ["M190 S70"], {1}, ["PLA", "PETG"]))   # PETG parts at 70: fine
+        self.assertIsNone(platemap.bed_warning(["M190 S70"], {0}, ["PLA"]))                 # no plate info: no guess
+
     def test_no_tower(self):
         lines = [l for l in GCODE.splitlines() if "Prime tower" not in l]
         _, summary = platemap.render(lines, "x")

@@ -71,6 +71,15 @@ class PrintLogTest(unittest.TestCase):
         self.assertEqual(self.show(3)["date"], "2025-01-02")
         self.assertIn("PETG", run("--log", self.log, "stats"))
 
+    def test_amend_issue_tags(self):
+        run("--log", self.log, "add", "--from", self.pkg, "--result", "success", "--issue", "stringing", "--issue", "wet-filament")
+        run("--log", self.log, "amend", "1", "--issue", "support-removal", "--remove-issue", "wet-filament")
+        self.assertEqual(self.show(1)["issues"], ["stringing", "support-removal"])
+        r = subprocess.run([sys.executable, "-I", SCRIPT, "--log", self.log, "amend", "1", "--remove-issue", "clog"],
+                           capture_output=True, text=True)
+        self.assertNotEqual(r.returncode, 0)
+        self.assertEqual(self.show(1)["issues"], ["stringing", "support-removal"])
+
 
 if __name__ == "__main__":
     unittest.main()
