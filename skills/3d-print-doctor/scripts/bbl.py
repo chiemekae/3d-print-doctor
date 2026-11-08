@@ -666,6 +666,8 @@ def cmd_calibrate(pr, a):
     if status.get("gcode_state") is None: die("no status from the printer; not starting")
     if status.get("gcode_state") in ACTIVE:
         die(f"the printer is busy ({status.get('gcode_state')}: {status.get('job')}); not starting a calibration")
+    # The printer acks the command within a second or two; the wait is for that ack and a fresh status, so
+    # the result below shows whether it was accepted. 8 s leaves room for the ack on a busy network.
     m = Mqtt(pr); m.publish(calibration_request(names)); msgs = m.pushall(wait=8); m.close()
     reply = calibration_reply(msgs)
     if reply not in ("success", None): die(f"the printer refused the calibration (result: {reply})")

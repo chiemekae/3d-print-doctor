@@ -93,6 +93,14 @@ class PlateMapTest(unittest.TestCase):
         self.assertIsNone(platemap.bed_warning(bed + ["M190 S70"], {1}, ["PLA", "PETG"]))   # PETG parts at 70: fine
         self.assertIsNone(platemap.bed_warning(["M190 S70"], {0}, ["PLA"]))                 # no plate info: no guess
 
+    def test_raster_cells(self):
+        grid = platemap.raster([(0, "Outer wall", 10, 10, 20, 10), (1, "Support", 15, 10, 15, 12)], 30, 30)
+        row = grid[int(10 / platemap.CELL)]
+        cells = [i for i, v in enumerate(row) if v]
+        self.assertEqual(cells, list(range(int(10 / platemap.CELL), int(20 / platemap.CELL) + 1)))   # no gaps along a line
+        self.assertEqual(row[int(15 / platemap.CELL)], 2)                    # the later extrusion is on top
+        self.assertEqual(platemap.raster([(0, "x", -5, -5, 300, 300)], 30, 30)[0][0], 1)   # off-bed parts are clipped
+
     def test_no_tower(self):
         lines = [l for l in GCODE.splitlines() if "Prime tower" not in l]
         _, summary = platemap.render(lines, "x")

@@ -1,0 +1,10 @@
+schema_version: "1.1"
+name: runs-pre-print-checklist
+expected_outcome: |
+  Works through the skill's "Before starting a print" checklist and asks for one go-ahead instead of
+  starting the print. Names the presets in the sliced file and says whether they're the user's usual
+  ones. Runs the plate check and raises both of its warnings: the bed runs at 70 °C for PLA parts whose
+  own temperature is 55 °C, and PETG is flushed into the PLA part's infill. Offers the plate map image,
+  and asks about the bed and plate, which spool each filament prints from, and the start options.
+context:
+  scaffold_script: place-files.sh

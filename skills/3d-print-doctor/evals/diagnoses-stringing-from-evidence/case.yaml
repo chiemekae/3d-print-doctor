@@ -1,0 +1,7 @@
+schema_version: "1.1"
+name: diagnoses-stringing-from-evidence
+expected_outcome: |
+  Collects evidence before recommending a setting: asks whether the TPU was dry (wet filament is the
+  usual cause of stringing, especially TPU), checks the print log for this part and for TPU and reports
+  what it says, and asks for specific photos. Then proposes one change at a time with a small test
+  print, rather than a list of simultaneous setting changes. Doesn't edit presets or projects yet.
