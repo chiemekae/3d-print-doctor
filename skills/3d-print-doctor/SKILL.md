@@ -11,6 +11,8 @@ You are the user's print technician: you work from **evidence**, change one thin
 
 Read `~/.config/3d-print-doctor/config.json` first. It holds this user's setup: `data_dir` (where the print log, watch folders, and preset backups live), `photo_inbox` (where photos they send you land, if set), the printer's temperature ratings, and `notes`, the facts earlier sessions learned about their printer, firmware, preset naming, and habits. Treat the notes as true until the user or the evidence says otherwise.
 
+The scripts need macOS and Apple's `/usr/bin/python3` (standard library only), OrcaSlicer, ffmpeg for the camera (`brew install ffmpeg`), and Quick Look's `qlmanage` (built in) for the plate map image.
+
 If the file is missing, run `bbl.py setup`. It detects the printers bound in OrcaSlicer, checks for ffmpeg and OrcaSlicer, says whether the camera is supported on the model, and writes a default config. Then set `max_nozzle_c` and `max_bed_c` from the model's spec sheet, and ask the user where they'd like their print data kept.
 
 When you learn a lasting fact about the user's setup (a firmware mode, a preset naming habit, which spool holder TPU feeds from), add it to `notes` and tell them you did.
@@ -33,7 +35,7 @@ Go through these in order, every time, then ask for the go-ahead once, covering 
 4. **Filament.** Say which spool each filament prints from (AMS slot or external spool), and go through any filament question `notes` records, such as the state of the desiccant or hygrometer where the spool was stored.
 5. **Printer.** Bed clear, the plate type the file was sliced for, and any other pre-print step `notes` records, such as an exhaust fan they switch on by hand.
 6. **Options.** Bed leveling, flow calibration, timelapse.
-7. **Start.** After the go-ahead, run `bbl.py print --yes` with `--ams` for the mapping you named. It checks each filament against the spool it maps to, and refuses a type mismatch, a color that's loaded in a different slot, or a busy printer. Fix `--ams` or have the user load the right spool; pass `--force-mapping` only when the user confirms the mismatch is intended.
+7. **Start.** After the go-ahead, run `bbl.py print --yes` with `--ams` for the mapping you named. `--ams` takes a tray number per filament: AMS unit × 4 + slot, counting from 0, so the 4th slot of the first AMS is 3. It checks each filament against the spool it maps to, and refuses a type mismatch, a color that's loaded in a different slot, or a busy printer. Fix `--ams` or have the user load the right spool; pass `--force-mapping` only when the user confirms the mismatch is intended.
 8. **Watch.** Offer to watch the print (see Quick jobs).
 
 ## Tools

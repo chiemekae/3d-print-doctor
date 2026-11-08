@@ -60,7 +60,7 @@ class MappingTest(unittest.TestCase):
 
     def test_missing_and_empty_trays(self):
         errors, _ = bbl.check_mapping(self.fil, STATUS, [3])
-        self.assertIn("filament 2: no AMS tray given", errors[0])
+        self.assertIn("filament 2: no tray number given", errors[0])
         errors, _ = bbl.check_mapping(self.fil, STATUS, [3, 4])
         self.assertIn("empty", errors[0])
 

@@ -118,7 +118,7 @@ def bed_warning(lines, part_filaments, types):
             if i in part_filaments and v.isdigit(): own[i] = max(own.get(i, 0), int(v))
     if not own: return None
     t, ref = min(own.items(), key=lambda kv: kv[1])
-    if used <= ref + 5: return None
+    if used <= ref + 5: return None   # plate temperatures usually move in 5 °C steps; one step up (PLA 55 -> 60) is an ordinary tweak
     kind = types[t] if t < len(types) else "part"
     formula = (header_list(lines, "bed_temperature_formula") or ["?"])[0]
     return (f"warning: the bed runs at {used} °C, but the {kind} parts' own {plate} temperature is {ref} °C "
@@ -134,7 +134,7 @@ def where(cx, cy, w, h):
 
 def render(lines, title):
     area = [tuple(map(float, p.split("x"))) for p in ",".join(header_list(lines, "printable_area")).split(",") if "x" in p] \
-        or [(0, 0), (256, 256)]
+        or [(0, 0), (256, 256)]   # the X1/P1 bed, when the header has no printable_area
     bw, bh = max(p[0] for p in area), max(p[1] for p in area)
     colors = header_list(lines, "filament_colour")
     types = header_list(lines, "filament_type")
@@ -213,6 +213,7 @@ def main():
         tmp = tempfile.mkdtemp()
         src = os.path.join(tmp, "plate.svg")
         open(src, "w").write(svg)
+        # 1000 px keeps the legend readable on a phone; Quick Look renders in a second or two, 60 s is a hang guard.
         subprocess.run(["qlmanage", "-t", "-s", "1000", "-o", tmp, src], capture_output=True, timeout=60)
         png = src + ".png"
         if not os.path.exists(png): sys.exit("Quick Look did not render the SVG; use --svg")

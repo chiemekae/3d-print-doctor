@@ -17,7 +17,7 @@ An agent skill that turns Claude Code (or another agent that reads `SKILL.md` sk
 ## Requirements
 
 - **macOS**, with Apple's Command Line Tools (`/usr/bin/python3`, 3.9+). The scripts use only the standard library.
-- **OrcaSlicer** (tested with 2.4.2), with the printer bound in its Device tab (LAN, access code).
+- **OrcaSlicer** (tested with 2.5.0 and 2.4.2), with the printer bound in its Device tab (LAN, access code).
 - **ffmpeg** for the camera: `brew install ffmpeg`, and "LAN liveview" turned on in the printer's settings.
 - **Starting, pausing, or stopping prints** from the agent needs the printer to accept third-party commands: on current Bambu firmware that means **LAN Only Mode + Developer Mode**. Status, camera, SD card, and the watch work without it.
 

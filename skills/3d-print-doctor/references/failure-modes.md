@@ -1,6 +1,6 @@
 # Failure modes
 
-Symptom → likely causes (most common first) → evidence that tells them apart → the levers to try. Lever names are OrcaSlicer keys. Confirm each key in a profile before editing (see orcaslicer.md). The `tag` beside each symptom is its issue tag in the print log (`printlog.py tags`).
+Symptom → likely causes (most common first) → evidence that tells them apart → the levers to try. Lever names are OrcaSlicer keys. Confirm each key exists in a sliced G-code header or `project_settings.config` before editing (see orcaslicer.md). The `tag` beside each symptom is its issue tag in the print log (`printlog.py tags`).
 
 Wet filament and a dirty plate cause a large share of failures, so rule them out before reaching for a setting: a setting change on wet filament treats the symptom and teaches the log the wrong lesson.
 
