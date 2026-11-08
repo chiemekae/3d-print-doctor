@@ -11,7 +11,9 @@ OrcaSlicer's own thumbnails leave the purge block out, which is why this exists.
 Prints one summary line per filament (what it prints: parts, infill, supports, purge block) and
 the purge block's position in mm and in words ("back center"), for the agent to describe. Prints a
 "warning:" line when a filament is flushed into the infill of parts made of a different material
-(PETG flushed into PLA infill, say), since the two may not bond. Writes the SVG next to OUT and converts it to PNG with
+(PETG flushed into PLA infill, say), since the two may not bond, and when the bed runs well above
+the part material's own temperature for the plate (mixed-material projects heat the bed for the
+hottest filament by default). Writes the SVG next to OUT and converts it to PNG with
 macOS Quick Look (`qlmanage`); --svg writes only the SVG to OUT. Standard library only; Python 3.9+.
 """
 import argparse, math, os, re, shutil, subprocess, sys, tempfile, zipfile
@@ -95,6 +97,35 @@ def roles(segs, tool):
     return [r for r in ("parts", "infill", "supports", "purge block") if r in found]
 
 
+PLATE_KEYS = {"textured pei plate": "textured_plate_temp", "high temp plate": "hot_plate_temp",
+              "smooth pei plate": "hot_plate_temp", "cool plate": "cool_plate_temp",
+              "engineering plate": "eng_plate_temp", "textured cool plate": "textured_cool_plate_temp",
+              "supertack plate": "supertack_plate_temp"}
+
+
+def bed_warning(lines, part_filaments, types):
+    """A warning when the bed runs well above the part material's own temperature for this plate.
+    With several filaments, OrcaSlicer's default bed_temperature_formula (by_highest_temp) heats the
+    bed for the hottest one: PLA parts with PETG supports get PETG's 70 °C."""
+    plate = (header_list(lines, "curr_bed_type") or [""])[0]
+    key = PLATE_KEYS.get(plate.lower())
+    temps = [int(m.group(1)) for l in lines if (m := re.match(r"M1[49]0 S(\d+)", l)) and int(m.group(1)) > 0]
+    if not key or not temps: return None
+    used = max(temps)
+    own = {}
+    for k in (key, key + "_initial_layer"):
+        for i, v in enumerate(",".join(header_list(lines, k)).split(",")):   # temperatures are comma-separated
+            if i in part_filaments and v.isdigit(): own[i] = max(own.get(i, 0), int(v))
+    if not own: return None
+    t, ref = min(own.items(), key=lambda kv: kv[1])
+    if used <= ref + 5: return None
+    kind = types[t] if t < len(types) else "part"
+    formula = (header_list(lines, "bed_temperature_formula") or ["?"])[0]
+    return (f"warning: the bed runs at {used} °C, but the {kind} parts' own {plate} temperature is {ref} °C "
+            f"(bed_temperature_formula = {formula}). Hot beds soften the bottom of the parts (elephant's foot). "
+            f"Lower {key} for the other filaments in a project copy, or set the formula to by_first_filament.")
+
+
 def where(cx, cy, w, h):
     col = ("left", "center", "right")[min(2, int(3 * cx / w))]
     row = ("front", "middle", "back")[min(2, int(3 * cy / h))]
@@ -129,6 +160,8 @@ def render(lines, title):
     summary, warnings = [], []
     tw = [s for s in segs if s[1].lower() in TOWER]
     part_types = {types[t] for t in used if t < len(types) and "parts" in roles(segs, t)}
+    hot = bed_warning(lines, {t for t in used if "parts" in roles(segs, t)}, types)
+    if hot: warnings.append(hot)
     for t in used:
         kind = types[t] if t < len(types) else "?"
         if "infill" in roles(segs, t) and kind not in part_types:

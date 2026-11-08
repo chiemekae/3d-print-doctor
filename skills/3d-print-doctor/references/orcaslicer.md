@@ -52,11 +52,23 @@ The usual fix is to keep the author's geometry and plate layout but re-select th
 - **Warnings:** `Metadata/slice_info.config` inside the `.gcode.3mf` lists slicer warnings. For example, `bed_temperature_too_high_than_filament` means the bed is set above the filament's softening temperature (`temperature_vitrification`). It's a soft warning: OrcaSlicer's own base TPU profile sets softening at 30 °C and plates at 35 °C, so every stock TPU print raises it. Act on it only when the bed is well above the stock value, or when PLA or TPU runs long in a closed, warm chamber (then open the door or lift the top glass).
 - **Settings source:** the command line slices with the project's embedded settings. After a user changes a preset, re-save the project in OrcaSlicer (or update `project_settings.config`) before slicing from the command line.
 
+### Testing a setting
+
+Before blaming a setting or changing it in a project, check that it changes this job at all. Slice a copy with the setting flipped and compare the motion G-code with the original slice, comment lines removed:
+
+```
+diff <(unzip -p a.gcode.3mf Metadata/plate_1.gcode | grep -v '^;') \
+     <(unzip -p b.gcode.3mf Metadata/plate_1.gcode | grep -v '^;') | wc -l    # 0: no effect on this job
+```
+
+No difference means the setting is irrelevant to this job, however plausible it sounds. On the Knife print, "Flush into objects' support" looked like the reason PETG supports stuck to PLA, but turning it off produced identical G-code: every purge went into the purge block and the infill.
+
 ## Gotchas found so far
 
 - **100% infill:** set `sparse_infill_pattern` to `zig-zag`, which OrcaSlicer reports as rectilinear. Grid and crosshatch don't support 100%.
 - **Build volume:** read `printable_height` and `printable_area` from the project's `project_settings.config` (or the machine preset's inherits chain); OrcaSlicer's height can be a little under the spec sheet (250 mm on the X1 series, against 256 mm advertised). A part's orientation decides whether it fits and how its features print. Tall, thin TPU parts wobble, so prefer laying them flat.
 - **TPU with an AMS:** regular TPU feeds from the external spool (`tray_now` 254); OrcaSlicer blocks filament type `TPU` in the AMS. The exception is Bambu's "TPU for AMS" (type `TPU-AMS`), which is allowed in AMS slots. Generic TPU's flow limit is around 3.2 mm³/s, so solid TPU parts take a long time. Estimate with the command-line slice before committing.
 - **Mixed materials and flushing:** with "Flush into objects' infill" (`flush_into_infill`) on, purge from each filament change goes into the parts' sparse infill instead of the purge block. That's fine for color changes in one material. When a second material only prints supports or interfaces (PETG supports on PLA, the usual trick for clean support removal), it puts that material inside the parts, where it won't bond. Turn the setting off in the project copy; `platemap.py` warns about this case. "Flush into support" (`flush_into_support`) matters less, since supports get removed anyway.
+- **Mixed materials heat the bed for the hottest one:** with `bed_temperature_formula` = `by_highest_temp` (the default), PLA parts with PETG supports get PETG's bed temperature (70 °C on textured PEI), and their bottoms soften. Fix it in the project copy: set the plate temperature (`textured_plate_temp` and `textured_plate_temp_initial_layer`, or the key for the plate in use) to one value both materials accept, such as 60 °C, or set the formula to `by_first_filament`. `platemap.py` warns when the bed runs well above the parts' own temperature.
 - **Mixed print temperatures:** OrcaSlicer refuses to slice filaments whose print temperatures fall outside each other's range (PLA 190-240 °C against PETG 255 °C) unless "Remove mixed temperature restriction" is on in Preferences. The command line ignores that preference: pass `--allow-mix-temp`.
 - **Calibration prints:** OrcaSlicer's Calibration menu (temperature, flow rate, pressure advance, retraction, max volumetric speed, tolerance) only works in the app. Ask the user to run one, then read the result from their photo or a `snap`.

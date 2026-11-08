@@ -5,7 +5,8 @@
                   [--issue TAG]... [--fix TEXT] [--notes TEXT] [--dried TEXT] [--hours H] [--set KEY=VALUE]...
                   [--date YYYY-MM-DD] [--source TEXT]
   (unknown: entries backfilled from the SD card, where the outcome wasn't recorded; amend when learned)
-  printlog.py amend ID [same options as add, all optional]   correct or complete an entry
+  printlog.py amend ID [same options as add, all optional] [--remove-issue TAG]...
+                                                 correct or complete an entry; --issue adds tags
   printlog.py find [--model S] [--material S] [--preset S] [--result R] [--issue TAG] [--limit N]
   printlog.py show ID
   printlog.py settings [--material S] [--preset S] [--model S]   what successful prints used:
@@ -174,6 +175,9 @@ def apply_opts(e, a):
         unknown = [t for t in a.issue if t not in TAGS]
         if unknown: print(f"note: new tag(s) {unknown}; existing tags: {', '.join(TAGS)}", file=sys.stderr)
         e["issues"] = sorted(set(e.get("issues", [])) | set(a.issue))
+    for tag in getattr(a, "remove_issue", None) or []:
+        if tag not in e.get("issues", []): die(f"entry has no issue tag {tag!r} (has: {', '.join(e.get('issues', [])) or 'none'})")
+        e["issues"] = [t for t in e["issues"] if t != tag]
     for kv in a.set or []:
         k, sep, v = kv.partition("=")
         if not sep: die(f"--set needs KEY=VALUE, got {kv!r}")
@@ -270,7 +274,9 @@ def main():
     sp = ap.add_subparsers(dest="cmd", required=True)
     for name, fn in (("add", cmd_add), ("amend", cmd_amend)):
         s = sp.add_parser(name)
-        if name == "amend": s.add_argument("id", type=int)
+        if name == "amend":
+            s.add_argument("id", type=int)
+            s.add_argument("--remove-issue", action="append", metavar="TAG", help="drop an issue tag (repeatable)")
         s.add_argument("--result", choices=RESULTS, required=(name == "add"))
         s.add_argument("--from", dest="from_file", metavar="FILE"); s.add_argument("--watch", metavar="DIR")
         s.add_argument("--model"); s.add_argument("--issue", action="append", metavar="TAG")
