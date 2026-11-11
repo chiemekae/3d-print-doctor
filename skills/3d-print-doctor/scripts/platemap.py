@@ -16,7 +16,7 @@ the part material's own temperature for the plate (mixed-material projects heat 
 hottest filament by default). Writes the SVG next to OUT and converts it to PNG with
 macOS Quick Look (`qlmanage`); --svg writes only the SVG to OUT. Standard library only; Python 3.9+.
 """
-import argparse, math, os, re, shutil, subprocess, sys, tempfile, zipfile
+import argparse, math, os, pathlib, re, shutil, subprocess, sys, tempfile, zipfile
 
 SCALE, PAD, GRID = 3, 40, 50          # px per mm, margin px, grid spacing mm
 CELL = 0.5                            # mm per map cell: about one extrusion width, so single lines still show
@@ -221,6 +221,11 @@ def render(lines, title):
     return "\n".join(o), summary + warnings
 
 
+def file_url(path):
+    """Absolute, percent-encoded file:// URL: a terminal can Ctrl+click it where a plain path with spaces won't open."""
+    return pathlib.Path(os.path.abspath(path)).as_uri()
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("file"); ap.add_argument("out")
@@ -240,13 +245,15 @@ def main():
         try:
             subprocess.run(["qlmanage", "-t", "-s", "1000", "-o", tmp, src], capture_output=True, timeout=60)
         except subprocess.TimeoutExpired:
-            sys.exit(f"Quick Look took over 60 s to render the map; the SVG is at {src} (open it in a browser), or use --svg")
+            sys.exit(f"Quick Look took over 60 s to render the map; the SVG is at {src} ({file_url(src)}; open it in a browser), or use --svg")
         png = src + ".png"
-        if not os.path.exists(png): sys.exit(f"Quick Look did not render the map; the SVG is at {src}, or use --svg")
+        if not os.path.exists(png): sys.exit(f"Quick Look did not render the map; the SVG is at {src} ({file_url(src)}), or use --svg")
         shutil.move(png, a.out)
-        shutil.copy(src, os.path.splitext(a.out)[0] + ".svg")
+        svg_out = os.path.splitext(a.out)[0] + ".svg"
+        shutil.copy(src, svg_out)
         shutil.rmtree(tmp, ignore_errors=True)
-    print(f"wrote {a.out}")
+    print(f"wrote {a.out}\n{file_url(a.out)}")
+    if not a.svg: print(f"also wrote {svg_out}\n{file_url(svg_out)}")
 
 
 if __name__ == "__main__":

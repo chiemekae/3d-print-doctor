@@ -74,6 +74,15 @@ class PlateMapTest(unittest.TestCase):
         svg = open(out).read()
         self.assertIn("#00AE42", svg); self.assertIn("#161616", svg); self.assertIn("Purge block", svg)
 
+    def test_prints_a_url_that_resolves_to_the_output(self):
+        import urllib.parse
+        out = os.path.join(self.d, "out dir", "plate map.svg")
+        os.makedirs(os.path.dirname(out))
+        r = subprocess.run([sys.executable, "-I", SCRIPT, self.pkg, out, "--svg"], capture_output=True, text=True)
+        url = r.stdout.strip().splitlines()[-1]
+        self.assertTrue(url.startswith("file:///") and " " not in url, url)
+        self.assertEqual(os.path.realpath(urllib.parse.unquote(urllib.parse.urlparse(url).path)), os.path.realpath(out))
+
     def test_missing_plate(self):
         r, _ = self.run_map("--plate", "2")
         self.assertNotEqual(r.returncode, 0)

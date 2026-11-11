@@ -56,6 +56,12 @@ class WatchTest(unittest.TestCase):
 
 
 class CodesTest(unittest.TestCase):
+    def test_file_url_encodes_spaces(self):
+        url = bbl.file_url("~/3d Printing/watch/snap.jpg")
+        self.assertTrue(url.startswith("file:///"))
+        self.assertIn("3d%20Printing/watch/snap.jpg", url)
+        self.assertNotIn(" ", url)
+
     def test_error_code_format(self):
         self.assertEqual(bbl.error_code(50348044), "0300400C")
         self.assertIsNone(bbl.error_code(0))
