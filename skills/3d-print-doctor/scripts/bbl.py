@@ -47,6 +47,9 @@ CONFIG = os.path.expanduser("~/.config/3d-print-doctor/config.json")
 # Defaults for a printer whose ratings aren't configured: high enough that no model raises a false alarm.
 DEFAULT_CONFIG = {"data_dir": "~/3d-print-doctor", "photo_inbox": None, "max_nozzle_c": 350, "max_bed_c": 120, "notes": [], "material_notes": {}}
 
+try: FILAMENT_IDS = json.load(open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "references", "filament-ids.json"), encoding="utf-8"))
+except (OSError, ValueError): FILAMENT_IDS = {}
+
 
 def config():
     try: return {**DEFAULT_CONFIG, **json.load(open(CONFIG))}
@@ -225,10 +228,13 @@ def summarize(msgs, pr=None):
         "chamber": p.get("chamber_temper"), "speed_level": p.get("spd_lvl"),
         "fans_pct": {k: p.get(k) for k in ("cooling_fan_speed", "big_fan1_speed", "big_fan2_speed", "heatbreak_fan_speed")},
         "nozzle_diameter": p.get("nozzle_diameter"), "nozzle_type": p.get("nozzle_type"), "sdcard": p.get("sdcard"),
-        "external_spool": {k: vt.get(k) for k in ("tray_type", "tray_color", "tray_info_idx", "nozzle_temp_min", "nozzle_temp_max")},
+        "external_spool": {**{k: vt.get(k) for k in ("tray_type", "tray_color", "tray_info_idx", "nozzle_temp_min", "nozzle_temp_max")},
+                           "filament": FILAMENT_IDS.get(vt.get("tray_info_idx"))},
         "tray_now": ams.get("tray_now"),
         "ams_trays": [{"ams": a.get("id"), "slot": t.get("id"), "type": t.get("tray_type"), "color": t.get("tray_color"),
-                       "humidity": a.get("humidity")} for a in ams.get("ams", []) for t in a.get("tray", [])],
+                       "humidity": a.get("humidity"),
+                       "filament_id": t.get("tray_info_idx"),
+                       "filament": FILAMENT_IDS.get(t.get("tray_info_idx"))} for a in ams.get("ams", []) for t in a.get("tray", [])],
         "wifi_signal": p.get("wifi_signal"),
     }
 
