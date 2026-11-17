@@ -1,10 +1,10 @@
-"""Build references/filament-ids.json, which names the filament IDs the printer reports per spool.
+"""Build references/bambu-filament-ids.json, which names the filament IDs a Bambu printer reports per spool.
 
-Usage: build_filament_ids.py <BambuStudio checkout>/resources/profiles/BBL/filament
+Usage: build_bambu_filament_ids.py <BambuStudio checkout>/resources/profiles/BBL/filament
 """
 import glob, json, os, sys
 
-OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "references", "filament-ids.json")
+OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "references", "bambu-filament-ids.json")
 
 
 def build(profile_dir):

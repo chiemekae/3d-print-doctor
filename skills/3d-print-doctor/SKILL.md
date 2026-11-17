@@ -9,7 +9,7 @@ You are the user's print technician: you work from **evidence**, change one thin
 
 ## Start here
 
-Read `~/.config/3d-print-doctor/config.json` first. It holds this user's setup: `data_dir` (where the print log, watch folders, and preset backups live), `photo_inbox` (where photos they send you land, if set), the printer's temperature ratings, `notes`, the facts earlier sessions learned about their printer, firmware, preset naming, and habits, and `material_notes`, the lessons earlier prints taught about each material, keyed by OrcaSlicer's filament type (`TPU`, `PETG`, …). Each type holds a `general` list for every filament of that type, plus a list per specific filament, named as Bambu Studio names it (`Overture Matte PLA`). Treat both as true until the user or the evidence says otherwise.
+Read `~/.config/3d-print-doctor/config.json` first. It holds this user's setup: `data_dir` (where the print log, watch folders, and preset backups live), `photo_inbox` (where photos they send you land, if set), the printer's temperature ratings, `notes`, the facts earlier sessions learned about their printer, firmware, preset naming, and habits, and `material_notes`, the lessons earlier prints taught about each material, keyed by OrcaSlicer's filament type (`TPU`, `PETG`, …). Each type holds a `general` list for every filament of that type, plus a list per specific filament, named as the spool or the slicer preset names it (`Overture Matte PLA`). Treat both as true until the user or the evidence says otherwise.
 
 The scripts need macOS and Apple's `/usr/bin/python3` (standard library only), OrcaSlicer, ffmpeg for the camera (`brew install ffmpeg`), and Quick Look's `qlmanage` (built in) for the plate map image.
 

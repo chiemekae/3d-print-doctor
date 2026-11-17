@@ -76,7 +76,7 @@ Setup finds your printer in OrcaSlicer, checks for ffmpeg, says whether your mod
 - `photo_inbox`: a folder where photos you send the agent land (for example from a phone-to-Mac sync), if you have one.
 - `max_nozzle_c`, `max_bed_c`: your printer's ratings, for over-temperature alerts.
 - `notes`: facts about your setup the agent should know every session. The agent adds to it as it learns, and tells you when it does.
-- `material_notes`: lessons about each material, keyed by OrcaSlicer's filament type (`TPU`, `PETG`, …). Each type has a `general` list and optional lists for specific filaments, named as Bambu Studio names them. The agent reads them before slicing or diagnosing a print in that material, and adds to them when a print teaches something new. It finds the loaded filament from the spool (an RFID tag or a brand picked on the printer), then the filament preset, and asks you only when both say Generic.
+- `material_notes`: lessons about each material, keyed by OrcaSlicer's filament type (`TPU`, `PETG`, …). Each type has a `general` list and optional lists for specific filaments, named as the spool or the slicer preset names them. The agent reads them before slicing or diagnosing a print in that material, and adds to them when a print teaches something new. It finds the loaded filament from the spool (an RFID tag or a brand picked on the printer), then the filament preset, and asks you only when both say Generic.
 
 ## Safety
 
@@ -99,12 +99,12 @@ macOS's Local Network privacy blocks programs like Homebrew's Python and ffmpeg 
 
 The tests use synthetic printer states and sliced files; no printer needed.
 
-`skills/3d-print-doctor/references/filament-ids.json` names the filament IDs the printer reports per spool. It comes from Bambu Studio's profiles. To rebuild it after Bambu adds filaments:
+On Bambu printers, each spool reports a filament ID (`GFL05`), not a name. `skills/3d-print-doctor/references/bambu-filament-ids.json` maps the IDs to names, built from Bambu Studio's profiles. To rebuild it after Bambu adds filaments:
 
 ```sh
 git clone --depth 1 --filter=blob:none --sparse https://github.com/bambulab/BambuStudio /tmp/bs
 git -C /tmp/bs sparse-checkout set resources/profiles/BBL/filament
-/usr/bin/python3 skills/3d-print-doctor/scripts/build_filament_ids.py /tmp/bs/resources/profiles/BBL/filament
+/usr/bin/python3 skills/3d-print-doctor/scripts/build_bambu_filament_ids.py /tmp/bs/resources/profiles/BBL/filament
 ```
 
 CI runs these tests on macOS for every pull request, and `main` only accepts changes through pull requests whose tests pass.

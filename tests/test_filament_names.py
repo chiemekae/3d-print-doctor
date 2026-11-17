@@ -1,4 +1,4 @@
-"""summarize() adds filament names from filament-ids.json."""
+"""summarize() adds filament names from bambu-filament-ids.json."""
 import importlib.util, os, unittest
 
 HERE = os.path.dirname(os.path.abspath(__file__))
