@@ -62,7 +62,10 @@ Setup finds your printer in OrcaSlicer, checks for ffmpeg, says whether your mod
  "notes": [
   "Printer: X1 Carbon, 0.4 mm nozzle. TPU feeds from the external spool.",
   "My own presets are named 'Mine - …'; prefer them."
- ]
+ ],
+ "material_notes": {
+  "TPU": ["Strings across open travel; plate each part as its own job."]
+ }
 }
 ```
 
@@ -70,6 +73,7 @@ Setup finds your printer in OrcaSlicer, checks for ffmpeg, says whether your mod
 - `photo_inbox`: a folder where photos you send the agent land (for example from a phone-to-Mac sync), if you have one.
 - `max_nozzle_c`, `max_bed_c`: your printer's ratings, for over-temperature alerts.
 - `notes`: facts about your setup the agent should know every session. The agent adds to it as it learns, and tells you when it does.
+- `material_notes`: lessons about each material, keyed by OrcaSlicer's filament type (`TPU`, `PETG`, …). The agent reads a material's list before slicing or diagnosing a print in it, and adds to it when a print teaches something new.
 
 ## Safety
 

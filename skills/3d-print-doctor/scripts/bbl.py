@@ -45,7 +45,7 @@ OPENSSL, CURL = "/usr/bin/openssl", "/usr/bin/curl"
 ACTIVE = {"PREPARE", "SLICING", "RUNNING", "PAUSE"}
 CONFIG = os.path.expanduser("~/.config/3d-print-doctor/config.json")
 # Defaults for a printer whose ratings aren't configured: high enough that no model raises a false alarm.
-DEFAULT_CONFIG = {"data_dir": "~/3d-print-doctor", "photo_inbox": None, "max_nozzle_c": 350, "max_bed_c": 120, "notes": []}
+DEFAULT_CONFIG = {"data_dir": "~/3d-print-doctor", "photo_inbox": None, "max_nozzle_c": 350, "max_bed_c": 120, "notes": [], "material_notes": {}}
 
 
 def config():
