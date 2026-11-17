@@ -20,8 +20,8 @@ Settings (data folder, temperature ratings) come from ~/.config/3d-print-doctor/
   bbl.py frames DIR --every S --count N [--assemble OUT.mp4]   self-made timelapse of a live print
   bbl.py print FILE.gcode.3mf --yes [--plate 1] [--no-level] [--no-flow] [--timelapse] [--vibration] [--ams 0,1]
                                              upload + start (default: external spool). Refuses when a
-                                             filament's type doesn't match its AMS slot or spool (or the
-                                             printer is busy); --force-mapping overrides the type check
+                                             filament's type or specific filament doesn't match its AMS slot or spool
+                                             (or the printer is busy); --force-mapping overrides both checks
   bbl.py pause|resume|stop --yes             change the running job
   bbl.py calibrate --yes [--vibration] [--bed-level] [--lidar]
                                              run printer calibrations on an idle printer (at least one)
@@ -541,36 +541,52 @@ def need_yes(a, what):
     if not a.yes: die(f"refusing to {what} without --yes (get the user's go-ahead first)")
 
 
-def sliced_filaments(z, plate=1):
-    """[(filament number, type, #RRGGBB)] for the filaments a plate uses, from slice_info.config;
-    every project filament from project_settings.config when slice_info has none."""
+def _plate_filaments(z, plate):
+    """Attribute dicts of the <filament> entries slice_info.config lists for a plate ([] when it has none)."""
+    try: info = z.read("Metadata/slice_info.config").decode(errors="replace")
+    except KeyError: return []
     out = []
-    try:
-        info = z.read("Metadata/slice_info.config").decode(errors="replace")
-        plates = re.split(r"<plate>", info)[1:]
-        for block in plates:
-            if re.search(r'key="index" value="(\d+)"', block) and \
-               int(re.search(r'key="index" value="(\d+)"', block).group(1)) != plate: continue
-            for m in re.finditer(r"<filament ([^>]*)/>", block):
-                attrs = dict(re.findall(r'(\w+)="([^"]*)"', m.group(1)))
-                out.append((int(attrs.get("id", 0)), attrs.get("type", ""), attrs.get("color", "")))
-    except KeyError:
-        pass
-    if not out:
-        try:
-            s = json.loads(z.read("Metadata/project_settings.config"))
-            types, colors = s.get("filament_type") or [], s.get("filament_colour") or []
-            out = [(i + 1, ty, colors[i] if i < len(colors) else "") for i, ty in enumerate(types)]
-        except (KeyError, ValueError):
-            pass
+    for block in re.split(r"<plate>", info)[1:]:
+        index = re.search(r'key="index" value="(\d+)"', block)
+        if index and int(index.group(1)) != plate: continue
+        out += [dict(re.findall(r'(\w+)="([^"]*)"', m.group(1))) for m in re.finditer(r"<filament ([^>]*)/>", block)]
     return out
 
 
-def check_mapping(filaments, status, ams):
+def _project_settings(z):
+    try: return json.loads(z.read("Metadata/project_settings.config"))
+    except (KeyError, ValueError): return {}
+
+
+def sliced_filaments(z, plate=1):
+    """[(filament number, type, #RRGGBB)] for the filaments a plate uses, from slice_info.config;
+    every project filament from project_settings.config when slice_info has none."""
+    out = [(int(f.get("id", 0)), f.get("type", ""), f.get("color", "")) for f in _plate_filaments(z, plate)]
+    if not out:
+        s = _project_settings(z)
+        types, colors = s.get("filament_type") or [], s.get("filament_colour") or []
+        out = [(i + 1, ty, colors[i] if i < len(colors) else "") for i, ty in enumerate(types)]
+    return out
+
+
+def sliced_filament_ids(z, plate=1):
+    """{filament number: Bambu filament ID} for the filaments a plate uses, from slice_info.config;
+    every project filament from project_settings.config when slice_info has none. Empty IDs are left out."""
+    out = {int(f.get("id", 0)): f["tray_info_idx"].strip() for f in _plate_filaments(z, plate)
+           if (f.get("tray_info_idx") or "").strip()}
+    if not out:
+        out = {i + 1: str(fid).strip() for i, fid in enumerate(_project_settings(z).get("filament_ids") or [])
+               if str(fid or "").strip()}
+    return out
+
+
+def check_mapping(filaments, status, ams, ids=None):
     """Compare each filament the plate uses with the spool it would print from.
     Returns (errors, lines): errors block the start; lines describe the mapping either way."""
     norm_type = lambda s: (s or "").strip().upper()
     norm_color = lambda s: (s or "").strip().lstrip("#").upper()[:6]
+    norm_id = lambda s: (s or "").strip().upper()   # Bambu filament ID; Generic ones end in 99
+    label = lambda i: f"{BAMBU_FILAMENT_IDS[i]} ({i})" if i in BAMBU_FILAMENT_IDS else i
     errors, lines, trays = [], [], {}
     if ams is None:
         if len(filaments) > 1:
@@ -587,7 +603,8 @@ def check_mapping(filaments, status, ams):
             tray = ams[n - 1]
             t = trays.get(tray) or {}
             sources[n] = (f"AMS {tray // 4 + 1} slot {tray % 4 + 1} (tray {tray})",
-                          {"tray_type": t.get("type"), "tray_color": t.get("color")})
+                          {"tray_type": t.get("type"), "tray_color": t.get("color"),
+                           "filament_id": t.get("filament_id")})
     for n, kind, color in filaments:
         if n not in sources: continue
         where, spool = sources[n]
@@ -598,15 +615,19 @@ def check_mapping(filaments, status, ams):
             errors.append(f"filament {n} ({kind}): {where} is empty or unknown to the printer")
         elif have_type != norm_type(kind):
             errors.append(f"filament {n} is {kind}, but {where} holds {have_type}")
-        elif color and have_color and norm_color(color) != have_color:
-            better = [f"AMS {i // 4 + 1} slot {i % 4 + 1} (tray {i})" for i, tr in sorted(trays.items())
-                      if norm_type(tr.get("type")) == have_type and norm_color(tr.get("color")) == norm_color(color)] \
-                if ams is not None else []
-            if better:
-                errors.append(f"filament {n} is #{norm_color(color)} {kind}, which is loaded in {', '.join(better)}, "
-                              f"but it maps to {where} (#{have_color})")
-            else:
-                lines.append(f"  note: color differs (sliced #{norm_color(color)}, loaded #{have_color}); fine if intended")
+        else:
+            want, have = norm_id((ids or {}).get(n)), norm_id(spool.get("tray_info_idx" if ams is None else "filament_id"))
+            if want and have and want != have and not want.endswith("99") and not have.endswith("99"):
+                errors.append(f"filament {n} is {label(want)}, but {where} holds {label(have)}")
+            if color and have_color and norm_color(color) != have_color:
+                better = [f"AMS {i // 4 + 1} slot {i % 4 + 1} (tray {i})" for i, tr in sorted(trays.items())
+                          if norm_type(tr.get("type")) == have_type and norm_color(tr.get("color")) == norm_color(color)] \
+                    if ams is not None else []
+                if better:
+                    errors.append(f"filament {n} is #{norm_color(color)} {kind}, which is loaded in {', '.join(better)}, "
+                                  f"but it maps to {where} (#{have_color})")
+                else:
+                    lines.append(f"  note: color differs (sliced #{norm_color(color)}, loaded #{have_color}); fine if intended")
     return errors, lines
 
 
@@ -617,12 +638,13 @@ def cmd_print(pr, a):
         if gpath not in z.namelist(): die(f"{a.file} has no {gpath}; export it with OrcaSlicer --export-3mf after slicing")
         md5 = hashlib.md5(z.read(gpath)).hexdigest().upper()
         filaments = sliced_filaments(z, a.plate)
+        ids = sliced_filament_ids(z, a.plate)
     ams = [int(x) for x in a.ams.split(",")] if a.ams else None
     m = Mqtt(pr); status = summarize(m.pushall(), pr); m.close()
     if status.get("gcode_state") is None: die("no status from the printer; not starting")
     if status.get("gcode_state") in ACTIVE:
         die(f"the printer is busy ({status.get('gcode_state')}: {status.get('job')}); not starting another job")
-    errors, lines = check_mapping(filaments, status, ams)
+    errors, lines = check_mapping(filaments, status, ams, ids=ids)
     print("\n".join(lines), file=sys.stderr)
     if errors and not a.force_mapping:
         die("filament mapping doesn't match what's loaded:\n  " + "\n  ".join(errors) +
