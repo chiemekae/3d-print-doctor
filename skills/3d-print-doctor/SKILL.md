@@ -37,7 +37,7 @@ Go through these in order, every time, then ask for the go-ahead once, covering 
 4. **Filament.** Say which spool each filament prints from (AMS slot or external spool), and go through any filament question `notes` or `material_notes` records, such as the state of the desiccant or hygrometer where the spool was stored.
 5. **Printer.** Bed clear, the plate type the file was sliced for, and any other pre-print step `notes` records, such as an exhaust fan they switch on by hand.
 6. **Options.** Bed leveling, flow calibration, timelapse.
-7. **Start.** After the go-ahead, run `bbl.py print --yes` with `--ams` for the mapping you named. `--ams` takes a tray number per filament: AMS unit × 4 + slot, counting from 0, so the 4th slot of the first AMS is 3. It checks each filament against the spool it maps to, and refuses a type mismatch, a color that's loaded in a different slot, or a busy printer. Fix `--ams` or have the user load the right spool; pass `--force-mapping` only when the user confirms the mismatch is intended.
+7. **Start.** After the go-ahead, run `bbl.py print --yes` with `--ams` for the mapping you named. `--ams` takes a tray number per filament: AMS unit × 4 + slot, counting from 0, so the 4th slot of the first AMS is 3. It checks each filament against the spool it maps to, and refuses a type mismatch, a specific-filament mismatch (when both sides name a non-Generic ID), a color that's loaded in a different slot, or a busy printer. Fix `--ams` or have the user load the right spool; pass `--force-mapping` only when the user confirms the mismatch is intended.
 8. **Watch.** Offer to watch the print (see Quick jobs).
 
 ## Tools
