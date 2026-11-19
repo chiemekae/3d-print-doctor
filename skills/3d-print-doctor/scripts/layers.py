@@ -63,27 +63,38 @@ def fmt(run):
     return f"{span}: {', '.join(sorted(feats)) or 'no extrusion'}"
 
 
+def load_layers(path, plate=1):
+    layers = layer_features(read_gcode(path, plate))
+    if not layers:
+        sys.exit(f"{path} has no '; CHANGE_LAYER' markers; is it sliced by OrcaSlicer or Bambu Studio?")
+    return layers
+
+
+def describe_at(layers, at):
+    """The run holding layer `at`, marked with ">", and the runs just before and after it."""
+    if not 1 <= at <= len(layers):
+        sys.exit(f"layer {at} is outside 1-{len(layers)}")
+    all_runs = runs(layers)
+    i = next(k for k, r in enumerate(all_runs) if r[0] <= at <= r[1])
+    lines = [f"layer {at} of {len(layers)}, z {layers[at - 1][0]:g} mm"]
+    for k in range(max(0, i - 1), min(len(all_runs), i + 2)):
+        lines.append(("> " if k == i else "  ") + fmt(all_runs[k]))
+    return "\n".join(lines)
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("file")
     ap.add_argument("--at", type=int, metavar="LAYER")
     ap.add_argument("--plate", type=int, default=1)
     a = ap.parse_args()
-    layers = layer_features(read_gcode(a.file, a.plate))
-    if not layers:
-        sys.exit(f"{a.file} has no '; CHANGE_LAYER' markers; is it sliced by OrcaSlicer or Bambu Studio?")
-    all_runs = runs(layers)
+    layers = load_layers(a.file, a.plate)
     if a.at is None:
         print(f"{len(layers)} layers")
-        for r in all_runs:
+        for r in runs(layers):
             print(fmt(r))
         return
-    if not 1 <= a.at <= len(layers):
-        sys.exit(f"layer {a.at} is outside 1-{len(layers)}")
-    i = next(k for k, r in enumerate(all_runs) if r[0] <= a.at <= r[1])
-    print(f"layer {a.at} of {len(layers)}, z {layers[a.at - 1][0]:g} mm")
-    for k in range(max(0, i - 1), min(len(all_runs), i + 2)):
-        print(("> " if k == i else "  ") + fmt(all_runs[k]))
+    print(describe_at(layers, a.at))
 
 
 if __name__ == "__main__":
