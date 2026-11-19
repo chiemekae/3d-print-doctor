@@ -18,7 +18,7 @@ class WatchTest(unittest.TestCase):
     def setUp(self):
         self.dir = tempfile.mkdtemp()
         args = types.SimpleNamespace(no_snap=True, dir=self.dir, max_nozzle=300, max_bed=110, stall_min=20,
-                                     progress_every=30, exit_on_alert=False)
+                                     progress_every=30, exit_on_alert=False, exit_on_progress=False)
         self.w = bbl.Watch(types.SimpleNamespace(serial="TEST", mask=lambda t: t), args)
 
     def run_seq(self, seq):
@@ -45,6 +45,13 @@ class WatchTest(unittest.TestCase):
         self.assertEqual(kinds, ["started:info", "alert:warning", "progress:info", "paused:warning", "alert:critical",
                                  "resumed:info", "alert:critical", "finished:info"])
         self.assertTrue(os.path.exists(os.path.join(self.dir, "events.jsonl")))
+
+    def test_exit_on_progress(self):
+        self.w.a.exit_on_progress = True
+        with redirect_stdout(io.StringIO()):
+            self.w.start(state(), 0)
+            self.assertIsNone(self.w.check(state(layer=6, rem=890), 10 * 60))
+            self.assertEqual(self.w.check(state(layer=7, rem=880), 31 * 60), 4)
 
     def test_calibration_is_not_a_stall(self):
         kinds = self.run_seq([(0, state("PREPARE")), (60 * 60, state("PREPARE")), (61 * 60, state("RUNNING"))])
