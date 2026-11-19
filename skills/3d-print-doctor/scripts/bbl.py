@@ -10,7 +10,8 @@ Settings (data folder, temperature ratings) come from ~/.config/3d-print-doctor/
 
   bbl.py setup                               detect printers and tools; create the config if missing
   bbl.py status [--json]                     read-only status, temps, layer, HMS/error codes with meanings, spool
-  bbl.py watch [--interval 300] [--exit-on-alert] [--exit-on-progress] [--wait-start MIN] [--no-snap] [--dir DIR]
+  bbl.py watch [--interval 300] [--exit-on-alert] [--exit-on-progress] [--judge CMD [--sliced FILE]]
+               [--wait-start MIN] [--no-snap] [--dir DIR]
                                              watch a print, one JSON event per line (see below)
   bbl.py code CODE...                        meaning of an HMS (AAAA-BBBB-CCCC-DDDD) or error (8 hex) code
   bbl.py ls [DIR]                            list a folder on the printer's SD card (default /)
@@ -33,11 +34,14 @@ watch: read-only. Events: started, progress (every --progress-every min), paused
 RUNNING, temperature over the rating), finished, failed, stopped, lost (no contact). Each event is
 one JSON line on stdout and in DIR/events.jsonl, with a camera snapshot in DIR unless --no-snap.
 DIR defaults to <data_dir>/watch/<date>_<job>/. Codes already active when the watch starts are
-listed in the started event, not alerted. Exit: 0 finished or nothing printing, 1 lost contact,
-2 failed or cancelled, 3 stopped on an alert (--exit-on-alert), 4 stopped after a progress event
-(--exit-on-progress).
+listed in the started event, not alerted. With --judge CMD, each progress event past layer 0 is judged
+by CMD (prompt on stdin, see references/snapshot-judge.md) and carries verdict (ok, off, failed, or error)
+and judge_note. An ok verdict keeps the watch running, even with --exit-on-progress. Any other verdict
+exits 5. Exit: 0 finished or nothing printing, 1 lost contact, 2 failed or cancelled, 3 stopped on an
+alert (--exit-on-alert), 4 stopped after a progress event (--exit-on-progress), 5 the judge did not
+say ok (--judge).
 """
-import argparse, collections, glob, hashlib, json, os, pathlib, re, shutil, socket, struct, subprocess, sys, tempfile, threading, time, urllib.parse, zipfile
+import argparse, collections, glob, hashlib, importlib.util, json, os, pathlib, re, shlex, shutil, socket, struct, subprocess, sys, tempfile, threading, time, urllib.parse, zipfile
 
 ORCA_CONF = os.path.expanduser("~/Library/Application Support/OrcaSlicer/OrcaSlicer.conf")
 ORCA_APP = "/Applications/OrcaSlicer.app"
@@ -338,10 +342,56 @@ def read_status(pr):
 
 
 # ---------------------------------------------------------------- watch
+JUDGE_PROMPT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "references", "snapshot-judge.md")
+
+
+def _layers_module():
+    spec = importlib.util.spec_from_file_location("layers", os.path.join(os.path.dirname(os.path.abspath(__file__)), "layers.py"))
+    mod = importlib.util.module_from_spec(spec); spec.loader.exec_module(mod)
+    return mod
+
+
+def expected_features(sliced, layer, plate=1):
+    """(what the part should look like at `layer`, "type color" of its filaments), or (None, None) when unknown."""
+    if not sliced: return None, None
+    try:
+        lay = _layers_module()
+        text = lay.describe_at(lay.load_layers(sliced, plate), layer)
+        filament = None
+        if zipfile.is_zipfile(sliced):
+            with zipfile.ZipFile(sliced) as z: fils = sliced_filaments(z, plate)
+            filament = ", ".join(f"{t} {c}".strip() for _, t, c in fils) or None
+        return text, filament
+    except (OSError, SystemExit, zipfile.BadZipFile, ValueError): return None, None
+
+
+def judge_prompt(snapshot, previous, layer, total, features, filament):
+    facts = ["", "Facts", f"- Current snapshot: {snapshot}",
+             f"- Previous snapshot: {previous}" if previous else "- Previous snapshot: none",
+             f"- Layer {layer} of {total}", f"- Filament: {filament or 'unknown'}"]
+    facts.append("- What the part should look like now:\n" + features if features else "- What the part should look like now: unknown")
+    with open(JUDGE_PROMPT, encoding="utf-8") as f: return f.read().rstrip() + "\n" + "\n".join(facts) + "\n"
+
+
+def run_judge(cmd, prompt, timeout=300):
+    """Run the judge command with the prompt on stdin. Returns (verdict, note); verdict is ok, off, failed, or error."""
+    try:
+        r = subprocess.run(shlex.split(cmd), input=prompt, capture_output=True, text=True, timeout=timeout)
+    except (OSError, ValueError, subprocess.TimeoutExpired) as e:
+        return "error", f"judge did not run: {type(e).__name__}"
+    lines = [l.strip() for l in r.stdout.splitlines() if l.strip()]
+    if r.returncode != 0 or not lines:
+        return "error", f"judge exited {r.returncode}: {(r.stderr or r.stdout).strip()[:300]}"
+    verdict = re.sub(r"[^\w]", "", lines[0].split()[0]).lower()
+    if verdict not in ("ok", "off", "failed"): return "error", f"unparsable judge output: {lines[0][:300]}"
+    rest = " ".join(lines).split(None, 1)
+    return verdict, rest[1][:500] if len(rest) > 1 else ""
+
+
 class Watch:
     def __init__(self, pr, a):
         self.pr, self.a, self.dir = pr, a, a.dir
-        self.alerted = False
+        self.alerted, self.prev_snap = False, None
 
     def _snap(self, kind):
         os.makedirs(self.dir, exist_ok=True)
@@ -357,11 +407,23 @@ class Watch:
             ev.update({k: s[k] for k in ("gcode_state", "job", "percent", "layer", "total_layers", "remaining_min", "stage")})
             ev["nozzle"], ev["bed"] = s["nozzle"], s["bed"]
         if snap and not self.a.no_snap: ev.update(self._snap(kind))
+        if kind == "progress" and getattr(self.a, "judge", None) and s and s["layer"]:
+            ev.update(self._judge(s, ev.get("snapshot")))
+        if ev.get("snapshot") and kind == "progress": self.prev_snap = ev["snapshot"]
         line = json.dumps(ev, ensure_ascii=False)
         print(line, flush=True)
         os.makedirs(self.dir, exist_ok=True)
         with open(os.path.join(self.dir, "events.jsonl"), "a") as f: f.write(line + "\n")
         if severity in ("warning", "critical"): self.alerted = True
+        return ev
+
+    def _judge(self, s, snapshot):
+        if not snapshot: return {"verdict": "error", "judge_note": "no snapshot to judge"}
+        features, filament = expected_features(self.a.sliced, s["layer"])
+        prompt = judge_prompt(os.path.abspath(snapshot), self.prev_snap and os.path.abspath(self.prev_snap),
+                              s["layer"], s["total_layers"], features, filament)
+        verdict, note = run_judge(self.a.judge, prompt)
+        return {"verdict": verdict, "judge_note": note}
 
     @staticmethod
     def _codes(s):
@@ -423,8 +485,10 @@ class Watch:
             self.emit("alert", "warning", f"no new layer and no change in time left for {self.a.stall_min}+ min", s)
 
         if st == "RUNNING" and now - self.last_progress >= self.a.progress_every * 60:
-            self.last_progress = now; self.emit("progress", "info", self._progress(s), s)
-            if self.a.exit_on_progress: return 4
+            self.last_progress = now
+            ev = self.emit("progress", "info", self._progress(s), s)
+            if "verdict" in ev: return None if ev["verdict"] == "ok" else 5
+            if self.a.exit_on_progress and not getattr(self.a, "judge", None): return 4
         return None
 
     def run(self):
@@ -722,6 +786,9 @@ def main():
     s.add_argument("--interval", type=int, default=300, help="seconds between checks (default 300, min 60)")
     s.add_argument("--exit-on-alert", action="store_true", help="exit (code 3) after the first warning or critical event")
     s.add_argument("--exit-on-progress", action="store_true", help="exit (code 4) after the first progress event")
+    s.add_argument("--judge", metavar="CMD", help="command that judges each progress snapshot (prompt on stdin, one line out); "
+                   "ok keeps watching, anything else exits 5; with it, --exit-on-progress never fires")
+    s.add_argument("--sliced", metavar="FILE", help="the job's sliced .gcode.3mf or .gcode, to tell the judge what the part should look like")
     s.add_argument("--wait-start", type=int, default=0, metavar="MIN", help="wait up to MIN minutes for a print to start")
     s.add_argument("--progress-every", type=int, default=config()["snapshot_check_min"] or 30, metavar="MIN",
                    help="progress event interval (default: config snapshot_check_min, or 30 when that is 0)")

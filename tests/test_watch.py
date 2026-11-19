@@ -1,5 +1,5 @@
 """Watch event logic, fed simulated printer states (no printer needed)."""
-import importlib.util, io, os, sys, tempfile, types, unittest
+import importlib.util, io, os, shlex, sys, tempfile, types, unittest
 from contextlib import redirect_stdout
 import json
 
@@ -60,6 +60,90 @@ class WatchTest(unittest.TestCase):
     def test_cancel(self):
         kinds = self.run_seq([(0, state()), (60, state("IDLE"))])
         self.assertEqual(kinds, ["started:info", "stopped:warning"])
+
+
+class JudgeTest(unittest.TestCase):
+    def setUp(self):
+        self.dir = tempfile.mkdtemp()
+        self.snap = os.path.join(self.dir, "cur.jpg")
+        open(self.snap, "wb").close()
+        self.args = types.SimpleNamespace(no_snap=False, dir=self.dir, max_nozzle=300, max_bed=110, stall_min=20,
+                                          progress_every=30, exit_on_alert=False, exit_on_progress=True,
+                                          judge=None, sliced=None)
+        self.w = bbl.Watch(types.SimpleNamespace(serial="TEST", mask=lambda t: t), self.args)
+        self.w._snap = lambda kind: {"snapshot": self.snap}
+
+    def judge_cmd(self, code):
+        return f"{shlex.quote(sys.executable)} -c {shlex.quote(code)}"
+
+    def progress(self, judge, layer=34):
+        self.args.judge = judge
+        out = io.StringIO()
+        with redirect_stdout(out):
+            self.w.start(state(layer=5), 0)
+            code = self.w.check(state(layer=layer, rem=800), 31 * 60)
+        events = [json.loads(l) for l in out.getvalue().splitlines()]
+        return code, [e for e in events if e["kind"] == "progress"][0]
+
+    def test_ok_keeps_watching_even_with_exit_on_progress(self):
+        code, ev = self.progress(self.judge_cmd("print('ok all good')"))
+        self.assertIsNone(code)
+        self.assertEqual((ev["verdict"], ev["judge_note"]), ("ok", "all good"))
+
+    def test_off_and_failed_exit_5(self):
+        for word in ("off", "failed"):
+            with self.subTest(word):
+                self.setUp()
+                code, ev = self.progress(self.judge_cmd(f"print('{word.upper()}: stringing near the top')"))
+                self.assertEqual((code, ev["verdict"]), (5, word))
+                self.assertEqual(ev["judge_note"], "stringing near the top")
+
+    def test_broken_judge_is_error_and_exits_5(self):
+        for cmd in ("import sys; sys.exit(3)", "print('maybe fine')", "pass"):
+            with self.subTest(cmd):
+                self.setUp()
+                code, ev = self.progress(self.judge_cmd(cmd))
+                self.assertEqual((code, ev["verdict"]), (5, "error"))
+
+    def test_missing_snapshot_is_error(self):
+        self.w._snap = lambda kind: {"snapshot_error": "camera down"}
+        code, ev = self.progress(self.judge_cmd("print('ok')"))
+        self.assertEqual((code, ev["verdict"]), (5, "error"))
+
+    def test_layer_zero_is_not_judged(self):
+        code, ev = self.progress(self.judge_cmd("print('failed')"), layer=0)
+        self.assertIsNone(code)
+        self.assertNotIn("verdict", ev)
+
+    def test_prompt_carries_the_facts_and_criteria(self):
+        sink = os.path.join(self.dir, "stdin.txt")
+        cmd = self.judge_cmd(f"import sys; open({sink!r}, 'w').write(sys.stdin.read()); print('ok')")
+        self.progress(cmd)
+        prompt = open(sink).read()
+        self.assertIn(self.snap, prompt)
+        self.assertIn("Layer 34 of 131", prompt)
+        self.assertIn("Previous snapshot: none", prompt)
+        self.assertIn(open(bbl.JUDGE_PROMPT, encoding="utf-8").read().strip(), prompt)
+        self.assertIn("should look like now: unknown", prompt)
+
+    def test_sliced_file_describes_the_expected_features(self):
+        gcode = os.path.join(self.dir, "p.gcode")
+        with open(gcode, "w") as f:
+            f.write("; CHANGE_LAYER\n; Z_HEIGHT: 0.2\n; FEATURE: Outer wall\n; CHANGE_LAYER\n; Z_HEIGHT: 0.4\n; FEATURE: Sparse infill\n")
+        text, filament = bbl.expected_features(gcode, 2)
+        self.assertIn("Sparse infill", text)
+        self.assertIsNone(filament)
+        self.assertEqual(bbl.expected_features(None, 2), (None, None))
+        self.assertEqual(bbl.expected_features(gcode, 99), (None, None))
+
+    def test_second_prompt_names_the_previous_snapshot(self):
+        sink = os.path.join(self.dir, "stdin.txt")
+        self.args.judge = self.judge_cmd(f"import sys; open({sink!r}, 'w').write(sys.stdin.read()); print('ok')")
+        with redirect_stdout(io.StringIO()):
+            self.w.start(state(layer=5), 0)
+            self.w.check(state(layer=30, rem=800), 31 * 60)
+            self.w.check(state(layer=60, rem=700), 62 * 60)
+        self.assertIn(f"Previous snapshot: {self.snap}", open(sink).read())
 
 
 class CodesTest(unittest.TestCase):
