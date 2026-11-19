@@ -65,8 +65,11 @@ Setup finds your printer in OrcaSlicer, checks for ffmpeg, says whether your mod
  ],
  "material_notes": {
   "TPU": {
-   "general": ["Strings across open travel; plate each part as its own job."],
-   "Bambu TPU 95A HF": ["Strings less at 225 °C than 240 °C."]
+   "general": [
+    "Strings across open travel. Plate each part as its own job.",
+    "Slip-on lids: the printed gap is the designed clearance plus about 0.55 mm per side. Design -0.55 mm per side for a snug fit."
+   ],
+   "Bambu TPU 95A HF": ["Under-extrudes at 225 °C. 240 °C works."]
   }
  }
 }
@@ -77,6 +80,35 @@ Setup finds your printer in OrcaSlicer, checks for ffmpeg, says whether your mod
 - `max_nozzle_c`, `max_bed_c`: your printer's ratings, for over-temperature alerts.
 - `notes`: facts about your setup the agent should know every session. The agent adds to it as it learns, and tells you when it does.
 - `material_notes`: lessons about each material, keyed by OrcaSlicer's filament type (`TPU`, `PETG`, …). Each type has a `general` list and optional lists for specific filaments, named as the spool or the slicer preset names them. The agent reads them before slicing or diagnosing a print in that material, and adds to them when a print teaches something new. It finds the loaded filament from the spool (an RFID tag or a brand picked on the printer), then the filament preset, and asks you only when both say Generic.
+
+## Designing parts to print
+
+The skill doesn't design parts. Design them in any CAD tool, such as the `cad` skill from [text-to-cad](https://github.com/earthtojake/text-to-cad), export an STL or 3MF, and ask the agent to slice and print it. Slice and print through this skill even if your CAD tool can do it too, so the agent applies your `material_notes` before slicing and logs the print.
+
+### Test the fit before the long print
+
+A printed part is never quite the size of the model. How far off it is depends on the material, the presets, and the shape, so measure it on your own setup. For anything that has to fit, such as a lid, a magnet, or a bearing:
+
+1. Keep the clearance as one parameter in the model, so each test is a one-number change.
+2. Print a short test piece of only the fitting feature. A ring cut from the bottom of a lid prints in a fraction of the lid's time.
+3. Measure the test piece with calipers and compare it with the model. Measure outside sizes and openings separately, because they can be off in opposite directions.
+4. Change the clearance by the offset you measured. If you aren't sure of the offset, print three test pieces at different clearances, mark each one, and keep the one that fits.
+5. Ask the agent to record the offset in `material_notes`, so the next part in that material starts from it.
+6. Print the full part. If the material strings, print each part as its own job.
+
+You can also correct sizes in the slicer with `xy_hole_compensation` and `xy_contour_compensation`. The `dimensions` row in [`failure-modes.md`](skills/3d-print-doctor/references/failure-modes.md) covers that route. A clearance in the model stays with the part when you print it with other presets.
+
+### Example: a TPU travel case
+
+This case holds a 100 ml perfume bottle. It has two TPU parts, a cup and a cover that slips over a lip on the cup. The model is a build123d script made with the `cad` skill, with the lip clearance as one parameter.
+
+The first print put both parts on one plate and took 11.4 hours and 154 g. The model had 0.2 mm of clearance per side between the cup's lip and the cover's opening, and the cover slid off. Calipers showed why. The lip printed about 0.45 mm per side small and the opening about 0.1 mm per side large, so the printed gap was about 0.75 mm per side. Along the long walls it reached about 1.25 mm, because the walls bowed.
+
+So on this setup, the printed gap was the designed clearance plus about 0.55 mm per side. A new cover takes 5.7 hours. Instead, the next job was three rings, each the bottom 18 mm of the cover, at clearances of -0.35, -0.55, and -0.75 mm per side. A negative clearance makes the model overlap the cup, and the TPU flexes to take up the overlap. One, two, and three notches told the rings apart. The rings took 3.3 hours and 42 g, and the -0.55 mm ring fit best.
+
+The cover reprinted at -0.55 mm stays on the cup when shaken or held upside down, and it still pulls off by hand. The lesson now sits in the config's `TPU` `general` list, as in the [configuration example](#configuration).
+
+That offset comes from one printer, one TPU, and one set of presets. Use -0.55 mm per side as a first guess for a TPU slip-on lid, and print your own rings before the long print.
 
 ## Safety
 
