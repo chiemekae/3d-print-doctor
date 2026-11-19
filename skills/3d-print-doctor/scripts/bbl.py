@@ -10,7 +10,7 @@ Settings (data folder, temperature ratings) come from ~/.config/3d-print-doctor/
 
   bbl.py setup                               detect printers and tools; create the config if missing
   bbl.py status [--json]                     read-only status, temps, layer, HMS/error codes with meanings, spool
-  bbl.py watch [--interval 300] [--exit-on-alert] [--wait-start MIN] [--no-snap] [--dir DIR]
+  bbl.py watch [--interval 300] [--exit-on-alert] [--exit-on-progress] [--wait-start MIN] [--no-snap] [--dir DIR]
                                              watch a print, one JSON event per line (see below)
   bbl.py code CODE...                        meaning of an HMS (AAAA-BBBB-CCCC-DDDD) or error (8 hex) code
   bbl.py ls [DIR]                            list a folder on the printer's SD card (default /)
@@ -34,7 +34,8 @@ RUNNING, temperature over the rating), finished, failed, stopped, lost (no conta
 one JSON line on stdout and in DIR/events.jsonl, with a camera snapshot in DIR unless --no-snap.
 DIR defaults to <data_dir>/watch/<date>_<job>/. Codes already active when the watch starts are
 listed in the started event, not alerted. Exit: 0 finished or nothing printing, 1 lost contact,
-2 failed or cancelled, 3 stopped on an alert (--exit-on-alert).
+2 failed or cancelled, 3 stopped on an alert (--exit-on-alert), 4 stopped after a progress event
+(--exit-on-progress).
 """
 import argparse, collections, glob, hashlib, json, os, pathlib, re, shutil, socket, struct, subprocess, sys, tempfile, threading, time, urllib.parse, zipfile
 
@@ -45,7 +46,7 @@ OPENSSL, CURL = "/usr/bin/openssl", "/usr/bin/curl"
 ACTIVE = {"PREPARE", "SLICING", "RUNNING", "PAUSE"}
 CONFIG = os.path.expanduser("~/.config/3d-print-doctor/config.json")
 # Defaults for a printer whose ratings aren't configured: high enough that no model raises a false alarm.
-DEFAULT_CONFIG = {"data_dir": "~/3d-print-doctor", "photo_inbox": None, "max_nozzle_c": 350, "max_bed_c": 120, "notes": [], "material_notes": {}}
+DEFAULT_CONFIG = {"data_dir": "~/3d-print-doctor", "photo_inbox": None, "max_nozzle_c": 350, "max_bed_c": 120, "snapshot_check_min": 30, "notes": [], "material_notes": {}}
 
 try: BAMBU_FILAMENT_IDS = json.load(open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "references", "bambu-filament-ids.json"), encoding="utf-8"))
 except (OSError, ValueError): BAMBU_FILAMENT_IDS = {}
@@ -423,6 +424,7 @@ class Watch:
 
         if st == "RUNNING" and now - self.last_progress >= self.a.progress_every * 60:
             self.last_progress = now; self.emit("progress", "info", self._progress(s), s)
+            if self.a.exit_on_progress: return 4
         return None
 
     def run(self):
@@ -719,8 +721,10 @@ def main():
     # under 60 s would mostly add load on the printer.
     s.add_argument("--interval", type=int, default=300, help="seconds between checks (default 300, min 60)")
     s.add_argument("--exit-on-alert", action="store_true", help="exit (code 3) after the first warning or critical event")
+    s.add_argument("--exit-on-progress", action="store_true", help="exit (code 4) after the first progress event")
     s.add_argument("--wait-start", type=int, default=0, metavar="MIN", help="wait up to MIN minutes for a print to start")
-    s.add_argument("--progress-every", type=int, default=30, metavar="MIN", help="progress event interval (default 30)")
+    s.add_argument("--progress-every", type=int, default=config()["snapshot_check_min"] or 30, metavar="MIN",
+                   help="progress event interval (default: config snapshot_check_min, or 30 when that is 0)")
     # One layer of a full plate can take well over 10 min, during which neither the layer nor the time left
     # may change; 20 min avoids false alarms there. Calibration stages are excluded separately (Watch.check).
     s.add_argument("--stall-min", type=int, default=20, help="minutes without progress before a stall alert (default 20)")
