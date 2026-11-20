@@ -41,7 +41,7 @@ exits 5. Exit: 0 finished or nothing printing, 1 lost contact, 2 failed or cance
 alert (--exit-on-alert), 4 stopped after a progress event (--exit-on-progress), 5 the judge did not
 say ok (--judge).
 """
-import argparse, collections, glob, hashlib, importlib.util, json, os, pathlib, re, shlex, shutil, socket, struct, subprocess, sys, tempfile, threading, time, urllib.parse, zipfile
+import argparse, collections, glob, hashlib, importlib.util, json, os, re, shlex, shutil, socket, struct, subprocess, sys, tempfile, threading, time, urllib.parse, zipfile
 
 ORCA_CONF = os.path.expanduser("~/Library/Application Support/OrcaSlicer/OrcaSlicer.conf")
 ORCA_APP = "/Applications/OrcaSlicer.app"
@@ -63,11 +63,6 @@ def config():
 
 def data_dir():
     return os.path.expanduser(config()["data_dir"])
-
-
-def file_url(path):
-    """Absolute, percent-encoded file:// URL: a terminal can Ctrl+click it where a plain path with spaces won't open."""
-    return pathlib.Path(os.path.abspath(os.path.expanduser(path))).as_uri()
 
 
 class PrinterError(Exception):
@@ -397,7 +392,7 @@ class Watch:
         os.makedirs(self.dir, exist_ok=True)
         out = os.path.join(self.dir, time.strftime("%Y%m%d-%H%M%S") + f"_{kind}.jpg")
         try:
-            ffmpeg(self.pr, "-frames:v", "1", "-q:v", "2", "-y", out); return {"snapshot": out, "snapshot_url": file_url(out)}
+            ffmpeg(self.pr, "-frames:v", "1", "-q:v", "2", "-y", out); return {"snapshot": out}
         except PrinterError as e:
             return {"snapshot_error": self.pr.mask(str(e)).splitlines()[0]}
 
@@ -579,28 +574,28 @@ def cmd_ls(pr, a):
 
 
 def cmd_get(pr, a):
-    curl(pr, a.remote, "-o", a.local); print(f"saved {a.local} ({os.path.getsize(a.local)} bytes)\n{file_url(a.local)}")
+    curl(pr, a.remote, "-o", a.local); print(f"saved {a.local} ({os.path.getsize(a.local)} bytes)")
 
 
 def cmd_snap(pr, a):
-    ffmpeg(pr, "-frames:v", "1", "-q:v", "2", "-y", a.out); print(f"saved {a.out}\n{file_url(a.out)}")
+    ffmpeg(pr, "-frames:v", "1", "-q:v", "2", "-y", a.out); print(f"saved {a.out}")
 
 
 def cmd_clip(pr, a):
-    ffmpeg(pr, "-t", str(a.seconds), "-c", "copy", "-y", a.out); print(f"saved {a.out}\n{file_url(a.out)}")
+    ffmpeg(pr, "-t", str(a.seconds), "-c", "copy", "-y", a.out); print(f"saved {a.out}")
 
 
 def cmd_frames(pr, a):
     os.makedirs(a.dir, exist_ok=True)
     for i in range(a.count):
         out = os.path.join(a.dir, "frame_%04d.jpg" % i)
-        ffmpeg(pr, "-frames:v", "1", "-q:v", "2", "-y", out); print(f"saved {out}\n{file_url(out)}", flush=True)
+        ffmpeg(pr, "-frames:v", "1", "-q:v", "2", "-y", out); print(f"saved {out}", flush=True)
         if i < a.count - 1: time.sleep(a.every)
     if a.assemble:
         exe = shutil.which("ffmpeg")
         subprocess.run([exe, "-hide_banner", "-loglevel", "error", "-y", "-framerate", "8", "-pattern_type", "glob",
                         "-i", os.path.join(a.dir, "frame_*.jpg"), "-pix_fmt", "yuv420p", a.assemble], check=True)
-        print(f"saved {a.assemble}\n{file_url(a.assemble)}")
+        print(f"saved {a.assemble}")
 
 
 def need_yes(a, what):
